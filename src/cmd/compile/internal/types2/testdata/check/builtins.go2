@@ -41,9 +41,9 @@ func _[T Bms] () {
 }
 
 func _[T Bcs] () {
-	_ = make /* ERROR expects 2 arguments */ (T)
+	_ = make /* ERROR expects 2 or 3 arguments */ (T)
 	_ = make(T, 10)
-	_ = make /* ERROR expects 2 arguments */ (T, 10, 20)
+	_ = make(T, 10, 20)
 }
 
 func _[T Bss] () {
