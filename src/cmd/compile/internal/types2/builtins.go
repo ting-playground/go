@@ -498,7 +498,7 @@ func (check *Checker) builtin(x *operand, call *syntax.CallExpr, id builtinId) (
 				sizes = append(sizes, size)
 			}
 		}
-		if len(sizes) == 2 && sizes[0] > sizes[1] {
+		if _, ok := optype(T).(*Chan); !ok && len(sizes) == 2 && sizes[0] > sizes[1] {
 			check.error(call.ArgList[1], invalidArg+"length and capacity swapped")
 			// safe to continue
 		}
