@@ -248,6 +248,7 @@ func walkMakeChan(n *ir.MakeExpr, init *ir.Nodes) ir.Node {
 	// When size fits into int, use makechan instead of
 	// makechan64, which is faster and shorter on 32 bit platforms.
 	size := n.Len
+	id := n.Cap
 	fnname := "makechan64"
 	argtype := types.Types[types.TINT64]
 
@@ -259,7 +260,7 @@ func walkMakeChan(n *ir.MakeExpr, init *ir.Nodes) ir.Node {
 		argtype = types.Types[types.TINT]
 	}
 
-	return mkcall1(chanfn(fnname, 1, n.Type()), n.Type(), init, reflectdata.TypePtr(n.Type()), typecheck.Conv(size, argtype))
+	return mkcall1(chanfn(fnname, 1, n.Type()), n.Type(), init, reflectdata.TypePtr(n.Type()), typecheck.Conv(size, argtype), typecheck.Conv(id, types.Types[types.TINT64]))
 }
 
 // walkMakeMap walks an OMAKEMAP node.

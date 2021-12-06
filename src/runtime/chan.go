@@ -23,6 +23,38 @@ import (
 	"unsafe"
 )
 
+type syncTrapperMap struct {
+	lock mutex
+	data map[*hchan]int64
+}
+
+func (s *syncTrapperMap) Put(c *hchan, id int64) {
+	lock(&s.lock)
+	s.data[c] = id
+	unlock(&s.lock)
+}
+
+func (s *syncTrapperMap) Get(c *hchan, id int64) {
+	lock(&s.lock)
+	s.data[c] = id
+	unlock(&s.lock)
+}
+
+func (s *syncTrapperMap) Clear() {
+	lock(&s.lock)
+	s.data = make(map[*hchan]int64)
+	unlock(&s.lock)
+}
+
+type SyncSignal struct {
+	ID int64
+	IsWakedUp *int32
+}
+
+var SyncTrapperMap *syncTrapperMap = &syncTrapperMap{data: make(map[*hchan]int64)}
+var SyncTrapperCh chan SyncSignal = make(chan SyncSignal)
+var EnableSyncTrapper bool
+
 const (
 	maxAlign  = 8
 	hchanSize = unsafe.Sizeof(hchan{}) + uintptr(-int(unsafe.Sizeof(hchan{}))&(maxAlign-1))
@@ -56,19 +88,19 @@ type waitq struct {
 }
 
 //go:linkname reflect_makechan reflect.makechan
-func reflect_makechan(t *chantype, size int) *hchan {
-	return makechan(t, size)
+func reflect_makechan(t *chantype, size int, id int64) *hchan {
+	return makechan(t, size, id)
 }
 
-func makechan64(t *chantype, size int64) *hchan {
+func makechan64(t *chantype, size int64, id int64) *hchan {
 	if int64(int(size)) != size {
 		panic(plainError("makechan: size out of range"))
 	}
 
-	return makechan(t, int(size))
+	return makechan(t, int(size), id)
 }
 
-func makechan(t *chantype, size int) *hchan {
+func makechan(t *chantype, size int, id int64) *hchan {
 	elem := t.elem
 
 	// compiler checks this but be safe.
@@ -113,6 +145,10 @@ func makechan(t *chantype, size int) *hchan {
 
 	if debugChan {
 		print("makechan: chan=", c, "; elemsize=", elem.size, "; dataqsiz=", size, "\n")
+	}
+
+	if EnableSyncTrapper && id >= 0 {
+		SyncTrapperMap.Put(c, id)
 	}
 	return c
 }

@@ -2657,7 +2657,7 @@ func MakeChan(typ Type, buffer int) Value {
 		panic("reflect.MakeChan: unidirectional channel type")
 	}
 	t := typ.(*rtype)
-	ch := makechan(t, buffer)
+	ch := makechan(t, buffer, -1)
 	return Value{t, ch, flag(Chan)}
 }
 
@@ -3154,7 +3154,7 @@ func chanrecv(ch unsafe.Pointer, nb bool, val unsafe.Pointer) (selected, receive
 //go:noescape
 func chansend(ch unsafe.Pointer, val unsafe.Pointer, nb bool) bool
 
-func makechan(typ *rtype, size int) (ch unsafe.Pointer)
+func makechan(typ *rtype, size int, id int64) (ch unsafe.Pointer)
 func makemap(t *rtype, cap int) (m unsafe.Pointer)
 
 //go:noescape

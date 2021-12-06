@@ -193,3 +193,9 @@ pkg time, method (Time) GoString() string
 pkg time, method (Time) IsDST() bool
 pkg time, method (Time) UnixMicro() int64
 pkg time, method (Time) UnixMilli() int64
+pkg runtime, var SyncTrapperMap *syncTrapperMap
+pkg runtime, var EnableSyncTrapper bool
+pkg runtime, type SyncSignal struct
+pkg runtime, type SyncSignal struct, ID int64
+pkg runtime, type SyncSignal struct, IsWakedUp *int32
+pkg runtime, var SyncTrapperCh chan SyncSignal

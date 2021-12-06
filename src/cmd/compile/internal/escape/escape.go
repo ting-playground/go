@@ -692,6 +692,7 @@ func (e *escape) exprSkipInit(k hole, n ir.Node) {
 	case ir.OMAKECHAN:
 		n := n.(*ir.MakeExpr)
 		e.discard(n.Len)
+		e.discard(n.Cap)
 	case ir.OMAKEMAP:
 		n := n.(*ir.MakeExpr)
 		e.spill(k, n)
