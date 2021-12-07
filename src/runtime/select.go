@@ -283,7 +283,11 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 				goto bufsend
 			}
 		}
+
+		selunlock(scases, lockorder)
 		waitSched(c)
+		sellock(scases, lockorder)
+
 		if casi >= nsends {
 			sg = c.sendq.dequeue()
 			if sg != nil {
