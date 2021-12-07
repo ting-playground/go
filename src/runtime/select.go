@@ -248,13 +248,13 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	var recvOK bool
 
 	if SyncTrapperMap.IsEnabled() {
-		if !block && fastrandn(uint32(ncases)) == 0 {
-			selunlock(scases, lockorder)
-			casi = -1
-			goto retc
-		}
-
 		casi = int(fastrandn(uint32(norder)))
+
+		if block && fastrandn(uint32(ncases)) == 0 {
+			// Try goto the default branch
+			goto normal
+		}
+		
 		cas = &scases[casi]
 		c = cas.c
 		if casi >= nsends {
@@ -312,6 +312,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 		}
 	}
 
+normal:
 	for _, casei := range pollorder {
 		casi = int(casei)
 		cas = &scases[casi]
