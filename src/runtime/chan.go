@@ -26,15 +26,18 @@ import (
 type syncTrapperMap struct {
 	lock mutex
 	data map[*hchan]int64
+
+	enable uint8
+	ch chan SyncSignal
 }
 
-func (s *syncTrapperMap) Put(c *hchan, id int64) {
+func (s *syncTrapperMap) Store(c *hchan, id int64) {
 	lock(&s.lock)
 	s.data[c] = id
 	unlock(&s.lock)
 }
 
-func (s *syncTrapperMap) Get(c *hchan) int64 {
+func (s *syncTrapperMap) Load(c *hchan) int64 {
 	lock(&s.lock)
 	id, exists := s.data[c]
 	unlock(&s.lock)
@@ -44,10 +47,31 @@ func (s *syncTrapperMap) Get(c *hchan) int64 {
 	return -1
 }
 
+func (s *syncTrapperMap) IsEnabled() bool {
+	return atomic.Load8(&s.enable) != 0
+}
+
+func (s *syncTrapperMap) Enable() {
+	atomic.Store8(&s.enable, 1)
+}
+
+func (s *syncTrapperMap) Disable() {
+	atomic.Store8(&s.enable, 0)
+}
+
 func (s *syncTrapperMap) Clear() {
 	lock(&s.lock)
 	s.data = make(map[*hchan]int64)
+	s.ch = make(chan SyncSignal)
 	unlock(&s.lock)
+}
+
+func (s *syncTrapperMap) Queued(id int64, isWakedUp *uint32) {
+	s.ch <- SyncSignal{ID: id, IsWakedUp: isWakedUp}
+}
+
+func (s *syncTrapperMap) Notify() chan SyncSignal {
+	return s.ch
 }
 
 type SyncSignal struct {
@@ -55,25 +79,10 @@ type SyncSignal struct {
 	IsWakedUp *uint32
 }
 
-type lockedData struct {
-	value uint8
+var SyncTrapperMap *syncTrapperMap = &syncTrapperMap{
+	data: make(map[*hchan]int64),
+	ch: make(chan SyncSignal),
 }
-
-func (l *lockedData) IsEnable() bool {
-	return atomic.Load8(&l.value) != 0
-}
-
-func (l *lockedData) Set(val bool) {
-	if val {
-		atomic.Store8(&l.value, 1)
-	} else {
-		atomic.Store8(&l.value, 0)
-	}
-}
-
-var SyncTrapperConfig lockedData
-var SyncTrapperMap *syncTrapperMap = &syncTrapperMap{data: make(map[*hchan]int64)}
-var SyncTrapperCh chan SyncSignal = make(chan SyncSignal)
 
 const (
 	maxAlign  = 8
@@ -167,8 +176,8 @@ func makechan(t *chantype, size int, id int64) *hchan {
 		print("makechan: chan=", c, "; elemsize=", elem.size, "; dataqsiz=", size, "\n")
 	}
 
-	if SyncTrapperConfig.IsEnable() && id >= 0 {
-		SyncTrapperMap.Put(c, id)
+	if SyncTrapperMap.IsEnabled() && id >= 0 {
+		SyncTrapperMap.Store(c, id)
 	}
 	return c
 }
@@ -723,13 +732,13 @@ func chanparkcommit(gp *g, chanLock unsafe.Pointer) bool {
 }
 
 func waitSched(c *hchan) {
-	id := SyncTrapperMap.Get(c)
+	id := SyncTrapperMap.Load(c)
 	if id == -1 {
 		return
 	}
 
 	isWakeUp := new(uint32)
-	SyncTrapperCh <- SyncSignal{ID: id, IsWakedUp: isWakeUp}
+	SyncTrapperMap.Queued(id, isWakeUp)
 	for atomic.Load(isWakeUp) != 1 {
 		timeSleep(1000000)
 	}
@@ -753,7 +762,7 @@ func waitSched(c *hchan) {
 //	}
 //
 func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
-	if SyncTrapperConfig.IsEnable() {
+	if SyncTrapperMap.IsEnabled() {
 		if fastrand() % 2 == 0 {
 			return false
 		}
@@ -780,7 +789,7 @@ func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 //	}
 //
 func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
-	if SyncTrapperConfig.IsEnable() {
+	if SyncTrapperMap.IsEnabled() {
 		if fastrand() % 2 == 0 {
 			return false, false
 		}
@@ -791,7 +800,7 @@ func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
 
 //go:linkname reflect_chansend reflect.chansend
 func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
-	if SyncTrapperConfig.IsEnable() {
+	if SyncTrapperMap.IsEnabled() {
 		if fastrand() % 2 == 0 {
 			return false
 		}
@@ -802,7 +811,7 @@ func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
 
 //go:linkname reflect_chanrecv reflect.chanrecv
 func reflect_chanrecv(c *hchan, nb bool, elem unsafe.Pointer) (selected bool, received bool) {
-	if SyncTrapperConfig.IsEnable() {
+	if SyncTrapperMap.IsEnabled() {
 		if fastrand() % 2 == 0 {
 			return false, false
 		}
