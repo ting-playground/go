@@ -254,7 +254,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 			// Try goto the default branch
 			goto normal
 		}
-		
+
 		cas = &scases[casi]
 		c = cas.c
 		if casi >= nsends {
