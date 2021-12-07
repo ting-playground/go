@@ -247,7 +247,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	var caseReleaseTime int64 = -1
 	var recvOK bool
 
-	if EnableSyncTrapper {
+	if SyncTrapperConfig.IsEnable() {
 		if !block && fastrandn(uint32(ncases)) == 0 {
 			selunlock(scases, lockorder)
 			casi = -1

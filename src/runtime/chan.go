@@ -55,9 +55,26 @@ type SyncSignal struct {
 	IsWakedUp *uint32
 }
 
+type lockedData struct {
+	lock mutex
+	value bool
+}
+
+func (l *lockedData) IsEnable() bool {
+	lock(&l.lock)
+	defer unlock(&l.lock)
+	return l.value
+}
+
+func (l *lockedData) Set(val bool) {
+	lock(&l.lock)
+	defer unlock(&l.lock)
+	l.value = val
+}
+
+var SyncTrapperConfig lockedData
 var SyncTrapperMap *syncTrapperMap = &syncTrapperMap{data: make(map[*hchan]int64)}
 var SyncTrapperCh chan SyncSignal = make(chan SyncSignal)
-var EnableSyncTrapper bool
 
 const (
 	maxAlign  = 8
@@ -151,7 +168,7 @@ func makechan(t *chantype, size int, id int64) *hchan {
 		print("makechan: chan=", c, "; elemsize=", elem.size, "; dataqsiz=", size, "\n")
 	}
 
-	if EnableSyncTrapper && id >= 0 {
+	if SyncTrapperConfig.IsEnable() && id >= 0 {
 		SyncTrapperMap.Put(c, id)
 	}
 	return c
@@ -737,7 +754,7 @@ func waitSched(c *hchan) {
 //	}
 //
 func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
-	if EnableSyncTrapper {
+	if SyncTrapperConfig.IsEnable() {
 		if fastrand() % 2 == 0 {
 			return false
 		}
@@ -764,7 +781,7 @@ func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 //	}
 //
 func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
-	if EnableSyncTrapper {
+	if SyncTrapperConfig.IsEnable() {
 		if fastrand() % 2 == 0 {
 			return false, false
 		}
@@ -775,7 +792,7 @@ func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
 
 //go:linkname reflect_chansend reflect.chansend
 func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
-	if EnableSyncTrapper {
+	if SyncTrapperConfig.IsEnable() {
 		if fastrand() % 2 == 0 {
 			return false
 		}
@@ -786,7 +803,7 @@ func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
 
 //go:linkname reflect_chanrecv reflect.chanrecv
 func reflect_chanrecv(c *hchan, nb bool, elem unsafe.Pointer) (selected bool, received bool) {
-	if EnableSyncTrapper {
+	if SyncTrapperConfig.IsEnable() {
 		if fastrand() % 2 == 0 {
 			return false, false
 		}
