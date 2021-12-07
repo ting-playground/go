@@ -31,18 +31,30 @@ type syncTrapperMap struct {
 	ch chan SyncSignal
 }
 
-//go:norace
-func (s *syncTrapperMap) Store(c *hchan, id int64) {
+func (s *syncTrapperMap) Lock() {
 	lock(&s.lock)
-	s.data[c] = id
+	if raceenabled {
+		raceacquire(unsafe.Pointer(&s.lock))
+	}
+}
+
+func (s *syncTrapperMap) Unlock() {
+	if raceenabled {
+		racerelease(unsafe.Pointer(&s.lock))
+	}
 	unlock(&s.lock)
 }
 
-//go:norace
+func (s *syncTrapperMap) Store(c *hchan, id int64) {
+	s.Lock()
+	s.data[c] = id
+	s.Unlock()
+}
+
 func (s *syncTrapperMap) Load(c *hchan) int64 {
-	lock(&s.lock)
+	s.Lock()
 	id, exists := s.data[c]
-	unlock(&s.lock)
+	s.Unlock()
 	if exists {
 		return id
 	}
@@ -66,10 +78,10 @@ func (s *syncTrapperMap) Disable() {
 
 //go:norace
 func (s *syncTrapperMap) Clear() {
-	lock(&s.lock)
+	s.Lock()
 	s.data = make(map[*hchan]int64)
 	s.ch = make(chan SyncSignal)
-	unlock(&s.lock)
+	s.Unlock()
 }
 
 func (s *syncTrapperMap) Queued(id int64, isWakedUp *uint32) {
