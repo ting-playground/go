@@ -34,10 +34,14 @@ func (s *syncTrapperMap) Put(c *hchan, id int64) {
 	unlock(&s.lock)
 }
 
-func (s *syncTrapperMap) Get(c *hchan, id int64) {
+func (s *syncTrapperMap) Get(c *hchan) int64 {
 	lock(&s.lock)
-	s.data[c] = id
+	id, exists := s.data[c]
 	unlock(&s.lock)
+	if exists {
+		return id
+	}
+	return -1
 }
 
 func (s *syncTrapperMap) Clear() {
@@ -48,7 +52,7 @@ func (s *syncTrapperMap) Clear() {
 
 type SyncSignal struct {
 	ID int64
-	IsWakedUp *int32
+	IsWakedUp *uint32
 }
 
 var SyncTrapperMap *syncTrapperMap = &syncTrapperMap{data: make(map[*hchan]int64)}
@@ -702,6 +706,19 @@ func chanparkcommit(gp *g, chanLock unsafe.Pointer) bool {
 	return true
 }
 
+func waitSched(c *hchan) {
+	id := SyncTrapperMap.Get(c)
+	if id == -1 {
+		return
+	}
+
+	isWakeUp := new(uint32)
+	SyncTrapperCh <- SyncSignal{ID: id, IsWakedUp: isWakeUp}
+	for atomic.Load(isWakeUp) != 1 {
+		timeSleep(1000000)
+	}
+}
+
 // compiler implements
 //
 //	select {
@@ -720,6 +737,12 @@ func chanparkcommit(gp *g, chanLock unsafe.Pointer) bool {
 //	}
 //
 func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
+	if EnableSyncTrapper {
+		if fastrand() % 2 == 0 {
+			return false
+		}
+		waitSched(c)
+	}
 	return chansend(c, elem, false, getcallerpc())
 }
 
@@ -741,16 +764,34 @@ func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 //	}
 //
 func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
+	if EnableSyncTrapper {
+		if fastrand() % 2 == 0 {
+			return false, false
+		}
+		waitSched(c)
+	}
 	return chanrecv(c, elem, false)
 }
 
 //go:linkname reflect_chansend reflect.chansend
 func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
+	if EnableSyncTrapper {
+		if fastrand() % 2 == 0 {
+			return false
+		}
+		waitSched(c)
+	}
 	return chansend(c, elem, !nb, getcallerpc())
 }
 
 //go:linkname reflect_chanrecv reflect.chanrecv
 func reflect_chanrecv(c *hchan, nb bool, elem unsafe.Pointer) (selected bool, received bool) {
+	if EnableSyncTrapper {
+		if fastrand() % 2 == 0 {
+			return false, false
+		}
+		waitSched(c)
+	}
 	return chanrecv(c, elem, !nb)
 }
 

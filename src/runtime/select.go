@@ -246,6 +246,72 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	var caseSuccess bool
 	var caseReleaseTime int64 = -1
 	var recvOK bool
+
+	if EnableSyncTrapper {
+		if !block && fastrandn(uint32(ncases)) == 0 {
+			selunlock(scases, lockorder)
+			casi = -1
+			goto retc
+		}
+
+		casi = int(fastrandn(uint32(norder)))
+		cas = &scases[casi]
+		c = cas.c
+		if casi >= nsends {
+			sg = c.sendq.dequeue()
+			if sg != nil {
+				goto recv
+			}
+			if c.qcount > 0 {
+				goto bufrecv
+			}
+			if c.closed != 0 {
+				goto rclose
+			}
+		} else {
+			if raceenabled {
+				racereadpc(c.raceaddr(), casePC(casi), chansendpc)
+			}
+			if c.closed != 0 {
+				goto sclose
+			}
+			sg = c.recvq.dequeue()
+			if sg != nil {
+				goto send
+			}
+			if c.qcount < c.dataqsiz {
+				goto bufsend
+			}
+		}
+		waitSched(c)
+		if casi >= nsends {
+			sg = c.sendq.dequeue()
+			if sg != nil {
+				goto recv
+			}
+			if c.qcount > 0 {
+				goto bufrecv
+			}
+			if c.closed != 0 {
+				goto rclose
+			}
+		} else {
+			if raceenabled {
+				racereadpc(c.raceaddr(), casePC(casi), chansendpc)
+			}
+			if c.closed != 0 {
+				goto sclose
+			}
+			sg = c.recvq.dequeue()
+			if sg != nil {
+				goto send
+			}
+			if c.qcount < c.dataqsiz {
+				goto bufsend
+			}
+		}
+	}
+
 	for _, casei := range pollorder {
 		casi = int(casei)
 		cas = &scases[casi]

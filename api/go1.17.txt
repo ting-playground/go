@@ -197,5 +197,5 @@ pkg runtime, var SyncTrapperMap *syncTrapperMap
 pkg runtime, var EnableSyncTrapper bool
 pkg runtime, type SyncSignal struct
 pkg runtime, type SyncSignal struct, ID int64
-pkg runtime, type SyncSignal struct, IsWakedUp *int32
+pkg runtime, type SyncSignal struct, IsWakedUp *uint32
 pkg runtime, var SyncTrapperCh chan SyncSignal
