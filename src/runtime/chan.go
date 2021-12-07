@@ -31,12 +31,14 @@ type syncTrapperMap struct {
 	ch chan SyncSignal
 }
 
+//go:norace
 func (s *syncTrapperMap) Store(c *hchan, id int64) {
 	lock(&s.lock)
 	s.data[c] = id
 	unlock(&s.lock)
 }
 
+//go:norace
 func (s *syncTrapperMap) Load(c *hchan) int64 {
 	lock(&s.lock)
 	id, exists := s.data[c]
@@ -47,18 +49,22 @@ func (s *syncTrapperMap) Load(c *hchan) int64 {
 	return -1
 }
 
+//go:norace
 func (s *syncTrapperMap) IsEnabled() bool {
 	return atomic.Load8(&s.enable) != 0
 }
 
+//go:norace
 func (s *syncTrapperMap) Enable() {
 	atomic.Store8(&s.enable, 1)
 }
 
+//go:norace
 func (s *syncTrapperMap) Disable() {
 	atomic.Store8(&s.enable, 0)
 }
 
+//go:norace
 func (s *syncTrapperMap) Clear() {
 	lock(&s.lock)
 	s.data = make(map[*hchan]int64)
