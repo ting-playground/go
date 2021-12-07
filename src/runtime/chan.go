@@ -56,20 +56,19 @@ type SyncSignal struct {
 }
 
 type lockedData struct {
-	lock mutex
-	value bool
+	value uint8
 }
 
 func (l *lockedData) IsEnable() bool {
-	lock(&l.lock)
-	defer unlock(&l.lock)
-	return l.value
+	return atomic.Load8(&l.value) != 0
 }
 
 func (l *lockedData) Set(val bool) {
-	lock(&l.lock)
-	defer unlock(&l.lock)
-	l.value = val
+	if val {
+		atomic.Store8(&l.value, 1)
+	} else {
+		atomic.Store8(&l.value, 0)
+	}
 }
 
 var SyncTrapperConfig lockedData
