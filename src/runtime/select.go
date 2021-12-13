@@ -248,13 +248,14 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	var recvOK bool
 
 	if SyncTrapperMap.IsEnabled() {
-		casi = int(fastrandn(uint32(norder)))
+		casj := int(fastrandn(uint32(norder)))
 
 		if block && fastrandn(uint32(ncases)) == 0 {
 			// Try goto the default branch
 			goto normal
 		}
-
+		
+		casi = int(pollorder[casj])
 		cas = &scases[casi]
 		c = cas.c
 		if casi >= nsends {
