@@ -5948,10 +5948,14 @@ var randomizeScheduler bool
 
 func randomizeEnabled() bool {
 	s := gogetenv("SYNCTRAPPER_RANDOM")
-	if s != "" {
+	if s == "0" {
+		return false
+	}
+	if s == "1" {
 		return true
 	}
-	return false
+	
+	return raceenabled
 }
 
 // runqput tries to put g on the local runnable queue.
