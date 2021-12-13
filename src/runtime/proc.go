@@ -143,6 +143,7 @@ var initSigmask sigset
 
 // The main goroutine.
 func main() {
+	randomizeScheduler = randomizeEnabled()
 	g := getg()
 
 	// Racectx of m0->g0 is used only as the parent of the main goroutine.
@@ -1460,7 +1461,6 @@ func mPark() {
 //
 //go:yeswritebarrierrec
 func mexit(osStack bool) {
-	randomizeScheduler = randomizeEnabled()
 	g := getg()
 	m := g.m
 
