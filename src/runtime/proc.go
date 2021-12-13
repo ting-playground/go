@@ -1460,6 +1460,7 @@ func mPark() {
 //
 //go:yeswritebarrierrec
 func mexit(osStack bool) {
+	randomizeScheduler = randomizeEnabled()
 	g := getg()
 	m := g.m
 
@@ -5943,7 +5944,7 @@ func runqempty(_p_ *p) bool {
 // With the randomness here, as long as the tests pass
 // consistently with -race, they shouldn't have latent scheduling
 // assumptions.
-var randomizeScheduler = randomizeEnabled()
+var randomizeScheduler bool
 
 func randomizeEnabled() bool {
 	s := gogetenv("SYNCTRAPPER_RANDOM")
