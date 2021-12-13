@@ -5954,7 +5954,7 @@ func randomizeEnabled() bool {
 	if s == "1" {
 		return true
 	}
-	
+
 	return raceenabled
 }
 
