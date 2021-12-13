@@ -5943,7 +5943,15 @@ func runqempty(_p_ *p) bool {
 // With the randomness here, as long as the tests pass
 // consistently with -race, they shouldn't have latent scheduling
 // assumptions.
-const randomizeScheduler = raceenabled
+var randomizeScheduler = randomizeEnabled()
+
+func randomizeEnabled() bool {
+	s := gogetenv("SYNCTRAPPER_RANDOM")
+	if s != "" {
+		return true
+	}
+	return false
+}
 
 // runqput tries to put g on the local runnable queue.
 // If next is false, runqput adds g to the tail of the runnable queue.
