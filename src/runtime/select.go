@@ -254,7 +254,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 			// Try goto the default branch
 			goto normal
 		}
-		
+
 		casi = int(pollorder[casj])
 		cas = &scases[casi]
 		c = cas.c
@@ -492,6 +492,7 @@ bufrecv:
 	if msanenabled && cas.elem != nil {
 		msanwrite(cas.elem, c.elemtype.size)
 	}
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectBufRecvEvent))
 	recvOK = true
 	qp = chanbuf(c, c.recvx)
 	if cas.elem != nil {
@@ -515,6 +516,7 @@ bufsend:
 	if msanenabled {
 		msanread(cas.elem, c.elemtype.size)
 	}
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectBufSendEvent))
 	typedmemmove(c.elemtype, chanbuf(c, c.sendx), cas.elem)
 	c.sendx++
 	if c.sendx == c.dataqsiz {
@@ -526,6 +528,7 @@ bufsend:
 
 recv:
 	// can receive from sleeping sender (sg)
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectRecvEvent))
 	recv(c, sg, cas.elem, func() { selunlock(scases, lockorder) }, 2)
 	if debugSelect {
 		print("syncrecv: cas0=", cas0, " c=", c, "\n")
@@ -536,6 +539,7 @@ recv:
 rclose:
 	// read at end of closed channel
 	selunlock(scases, lockorder)
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectCloseRecvEvent))
 	recvOK = false
 	if cas.elem != nil {
 		typedmemclr(c.elemtype, cas.elem)
@@ -553,6 +557,7 @@ send:
 	if msanenabled {
 		msanread(cas.elem, c.elemtype.size)
 	}
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectSendEvent))
 	send(c, sg, cas.elem, func() { selunlock(scases, lockorder) }, 2)
 	if debugSelect {
 		print("syncsend: cas0=", cas0, " c=", c, "\n")

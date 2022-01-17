@@ -12,6 +12,7 @@ package sync
 
 import (
 	"internal/race"
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -71,6 +72,10 @@ const (
 // blocks until the mutex is available.
 func (m *Mutex) Lock() {
 	// Fast path: grab unlocked mutex.
+	if runtime.SyncTraceEnable {
+		runtime_MarkEvent(unsafe.Pointer(m), 0, int(runtime.LockEvent))
+	}
+
 	if atomic.CompareAndSwapInt32(&m.state, 0, mutexLocked) {
 		if race.Enabled {
 			race.Acquire(unsafe.Pointer(m))
@@ -180,6 +185,10 @@ func (m *Mutex) Unlock() {
 	if race.Enabled {
 		_ = m.state
 		race.Release(unsafe.Pointer(m))
+	}
+
+	if runtime.SyncTraceEnable {
+		runtime_MarkEvent(unsafe.Pointer(m), 0, int(runtime.UnlockEvent))
 	}
 
 	// Fast path: drop lock bit.

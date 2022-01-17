@@ -144,6 +144,7 @@ var initSigmask sigset
 // The main goroutine.
 func main() {
 	randomizeScheduler = randomizeEnabled()
+	SyncTraceEnable = syncTraceEnabled()
 	g := getg()
 
 	// Racectx of m0->g0 is used only as the parent of the main goroutine.
@@ -4254,6 +4255,7 @@ func newproc(siz int32, fn *funcval) {
 	pc := getcallerpc()
 	systemstack(func() {
 		newg := newproc1(fn, argp, siz, gp, pc)
+		// MarkEvent(unsafe.Pointer(newg), newg.goid, int(NewProcEvent))
 
 		_p_ := getg().m.p.ptr()
 		runqput(_p_, newg, true)
