@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"fmt"
 	"runtime/internal/atomic"
 	"unsafe"
 )
@@ -57,11 +56,12 @@ const (
 )
 
 type StTraceEvent struct {
-	Goid     int64
-	Now      int64
-	Type     int
-	Addr     unsafe.Pointer
-	Location string
+	Goid int64
+	Now  int64
+	Type int
+	Addr unsafe.Pointer
+	File string
+	Line int
 }
 
 func (s StTraceEvent) IsType(t SyncEventType) bool {
@@ -112,7 +112,6 @@ func (s *stTrace) append(id int64, event StTraceEvent) {
 
 //go:linkname MarkEvent sync.runtime_MarkEvent
 func MarkEvent(addr unsafe.Pointer, goid int64, event int) {
-	return
 	if !SyncTraceEnable {
 		return
 	}
@@ -121,23 +120,20 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int) {
 		goid = getg().goid
 	}
 
-	loc := "unknown"
 	skip := 2
 	if event != int(NewProcEvent) {
 		skip = 3
 	}
 
-	_, file, line, ok := Caller(skip)
-	if ok {
-		loc = fmt.Sprintf("%s:%d", file, line)
-	}
+	_, file, line, _ := Caller(skip)
 
 	StTrace.append(goid, StTraceEvent{
-		Goid:     goid,
-		Now:      nanotime(),
-		Type:     event,
-		Addr:     addr,
-		Location: loc,
+		Goid: goid,
+		Now:  nanotime(),
+		Type: event,
+		Addr: addr,
+		File: file,
+		Line: line,
 	})
 }
 

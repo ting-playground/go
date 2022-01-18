@@ -198,57 +198,59 @@ pkg runtime, type SyncSignal struct
 pkg runtime, type SyncSignal struct, ID int64
 pkg runtime, type SyncSignal struct, IsWakedUp *uint32
 pkg runtime, const ChanCloseEvent = 9
-pkg runtime, const ChanCloseEvent syncEvent
+pkg runtime, const ChanCloseEvent SyncEventType
 pkg runtime, const ChanRecv1Envet = 8
-pkg runtime, const ChanRecv1Envet syncEvent
+pkg runtime, const ChanRecv1Envet SyncEventType
 pkg runtime, const ChanRecv2Event = 7
-pkg runtime, const ChanRecv2Event syncEvent
+pkg runtime, const ChanRecv2Event SyncEventType
 pkg runtime, const ChanReflectRecvEvent = 11
-pkg runtime, const ChanReflectRecvEvent syncEvent
+pkg runtime, const ChanReflectRecvEvent SyncEventType
 pkg runtime, const ChanReflectSendEvent = 10
-pkg runtime, const ChanReflectSendEvent syncEvent
+pkg runtime, const ChanReflectSendEvent SyncEventType
 pkg runtime, const ChanSend1Event = 6
-pkg runtime, const ChanSend1Event syncEvent
+pkg runtime, const ChanSend1Event SyncEventType
 pkg runtime, const CondBroadcastEvent = 24
-pkg runtime, const CondBroadcastEvent syncEvent
+pkg runtime, const CondBroadcastEvent SyncEventType
 pkg runtime, const NewProcEvent = 25
-pkg runtime, const NewProcEvent syncEvent
+pkg runtime, const NewProcEvent SyncEventType
+pkg runtime, const MainFuncStartEvent = 26
+pkg runtime, const MainFuncStartEvent SyncEventType
 pkg runtime, const CondSignalEvent = 23
-pkg runtime, const CondSignalEvent syncEvent
+pkg runtime, const CondSignalEvent SyncEventType
 pkg runtime, const CondWaitEvent = 22
-pkg runtime, const CondWaitEvent syncEvent
+pkg runtime, const CondWaitEvent SyncEventType
 pkg runtime, const LockEvent = 0
-pkg runtime, const LockEvent syncEvent
+pkg runtime, const LockEvent SyncEventType
 pkg runtime, const RLockEvent = 4
-pkg runtime, const RLockEvent syncEvent
+pkg runtime, const RLockEvent SyncEventType
 pkg runtime, const RUnlockEvent = 5
-pkg runtime, const RUnlockEvent syncEvent
+pkg runtime, const RUnlockEvent SyncEventType
 pkg runtime, const SelectBufRecvEvent = 14
-pkg runtime, const SelectBufRecvEvent syncEvent
+pkg runtime, const SelectBufRecvEvent SyncEventType
 pkg runtime, const SelectBufSendEvent = 13
-pkg runtime, const SelectBufSendEvent syncEvent
+pkg runtime, const SelectBufSendEvent SyncEventType
 pkg runtime, const SelectCloseRecvEvent = 15
-pkg runtime, const SelectCloseRecvEvent syncEvent
+pkg runtime, const SelectCloseRecvEvent SyncEventType
 pkg runtime, const SelectDefaultEvent = 19
-pkg runtime, const SelectDefaultEvent syncEvent
+pkg runtime, const SelectDefaultEvent SyncEventType
 pkg runtime, const SelectNbRecvEvent = 18
-pkg runtime, const SelectNbRecvEvent syncEvent
+pkg runtime, const SelectNbRecvEvent SyncEventType
 pkg runtime, const SelectNbSendEvent = 16
-pkg runtime, const SelectNbSendEvent syncEvent
+pkg runtime, const SelectNbSendEvent SyncEventType
 pkg runtime, const SelectRecvEvent = 17
-pkg runtime, const SelectRecvEvent syncEvent
+pkg runtime, const SelectRecvEvent SyncEventType
 pkg runtime, const SelectSendEvent = 12
-pkg runtime, const SelectSendEvent syncEvent
+pkg runtime, const SelectSendEvent SyncEventType
 pkg runtime, const UnlockEvent = 1
-pkg runtime, const UnlockEvent syncEvent
+pkg runtime, const UnlockEvent SyncEventType
 pkg runtime, const WGDoneEvent = 21
-pkg runtime, const WGDoneEvent syncEvent
+pkg runtime, const WGDoneEvent SyncEventType
 pkg runtime, const WGWaitEvent = 20
-pkg runtime, const WGWaitEvent syncEvent
+pkg runtime, const WGWaitEvent SyncEventType
 pkg runtime, const WLockEvent = 2
-pkg runtime, const WLockEvent syncEvent
+pkg runtime, const WLockEvent SyncEventType
 pkg runtime, const WUnlockEvent = 3
-pkg runtime, const WUnlockEvent syncEvent
+pkg runtime, const WUnlockEvent SyncEventType
 pkg runtime, type StTraceEvent struct
 pkg runtime, type StTraceEvent struct, Addr unsafe.Pointer
 pkg runtime, type StTraceEvent struct, Goid int64
@@ -257,3 +259,7 @@ pkg runtime, type StTraceEvent struct, Type int
 pkg runtime, var StTrace *stTrace
 pkg runtime, func MarkEvent(unsafe.Pointer, int64, int)
 pkg runtime, var SyncTraceEnable bool
+pkg runtime, method (StTraceEvent) IsType(SyncEventType) bool
+pkg runtime, type StTraceEvent struct, File string
+pkg runtime, type StTraceEvent struct, Line int
+pkg runtime, type SyncEventType int
