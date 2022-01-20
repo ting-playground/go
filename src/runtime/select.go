@@ -492,7 +492,7 @@ bufrecv:
 	if msanenabled && cas.elem != nil {
 		msanwrite(cas.elem, c.elemtype.size)
 	}
-	MarkEvent(unsafe.Pointer(c), 0, int(SelectBufRecvEvent))
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectBufRecvEvent), 0, 0)
 	recvOK = true
 	qp = chanbuf(c, c.recvx)
 	if cas.elem != nil {
@@ -516,7 +516,7 @@ bufsend:
 	if msanenabled {
 		msanread(cas.elem, c.elemtype.size)
 	}
-	MarkEvent(unsafe.Pointer(c), 0, int(SelectBufSendEvent))
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectBufSendEvent), 0, 0)
 	typedmemmove(c.elemtype, chanbuf(c, c.sendx), cas.elem)
 	c.sendx++
 	if c.sendx == c.dataqsiz {
@@ -528,7 +528,7 @@ bufsend:
 
 recv:
 	// can receive from sleeping sender (sg)
-	MarkEvent(unsafe.Pointer(c), 0, int(SelectRecvEvent))
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectRecvEvent), 0, 0)
 	recv(c, sg, cas.elem, func() { selunlock(scases, lockorder) }, 2)
 	if debugSelect {
 		print("syncrecv: cas0=", cas0, " c=", c, "\n")
@@ -539,7 +539,7 @@ recv:
 rclose:
 	// read at end of closed channel
 	selunlock(scases, lockorder)
-	MarkEvent(unsafe.Pointer(c), 0, int(SelectCloseRecvEvent))
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectCloseRecvEvent), 0, 0)
 	recvOK = false
 	if cas.elem != nil {
 		typedmemclr(c.elemtype, cas.elem)
@@ -557,7 +557,7 @@ send:
 	if msanenabled {
 		msanread(cas.elem, c.elemtype.size)
 	}
-	MarkEvent(unsafe.Pointer(c), 0, int(SelectSendEvent))
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectSendEvent), 0, 0)
 	send(c, sg, cas.elem, func() { selunlock(scases, lockorder) }, 2)
 	if debugSelect {
 		print("syncsend: cas0=", cas0, " c=", c, "\n")

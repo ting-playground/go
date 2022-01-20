@@ -257,7 +257,7 @@ pkg runtime, type StTraceEvent struct, Goid int64
 pkg runtime, type StTraceEvent struct, Now int64
 pkg runtime, type StTraceEvent struct, Type int
 pkg runtime, var StTrace *stTrace
-pkg runtime, func MarkEvent(unsafe.Pointer, int64, int)
+pkg runtime, func MarkEvent(unsafe.Pointer, int64, int, uintptr, uintptr)
 pkg runtime, var SyncTraceEnable bool
 pkg runtime, method (StTraceEvent) IsType(SyncEventType) bool
 pkg runtime, type StTraceEvent struct, File string

@@ -60,7 +60,7 @@ func (rw *RWMutex) RLock() {
 		race.Disable()
 	}
 	if runtime.SyncTraceEnable {
-		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RLockEvent))
+		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RLockEvent), 0, 0)
 	}
 
 	if atomic.AddInt32(&rw.readerCount, 1) < 0 {
@@ -85,7 +85,7 @@ func (rw *RWMutex) RUnlock() {
 	}
 
 	if runtime.SyncTraceEnable {
-		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RUnlockEvent))
+		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RUnlockEvent), 0, 0)
 	}
 
 	if r := atomic.AddInt32(&rw.readerCount, -1); r < 0 {
@@ -119,7 +119,7 @@ func (rw *RWMutex) Lock() {
 	}
 
 	if runtime.SyncTraceEnable {
-		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WLockEvent))
+		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WLockEvent), 0, 0)
 	}
 
 	// First, resolve competition with other writers.
@@ -151,7 +151,7 @@ func (rw *RWMutex) Unlock() {
 	}
 
 	if runtime.SyncTraceEnable {
-		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WUnlockEvent))
+		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WUnlockEvent), 0, 0)
 	}
 
 	// Announce to readers there is no active writer.

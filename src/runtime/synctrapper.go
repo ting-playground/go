@@ -111,7 +111,7 @@ func (s *stTrace) append(id int64, event StTraceEvent) {
 }
 
 //go:linkname MarkEvent sync.runtime_MarkEvent
-func MarkEvent(addr unsafe.Pointer, goid int64, event int) {
+func MarkEvent(addr unsafe.Pointer, goid int64, event int, pc, sp uintptr) {
 	if !SyncTraceEnable {
 		return
 	}
@@ -120,12 +120,19 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int) {
 		goid = getg().goid
 	}
 
-	skip := 2
-	if event != int(NewProcEvent) {
-		skip = 3
-	}
+	var file string
+	var line int
 
-	_, file, line, _ := Caller(skip)
+	if event != int(NewProcEvent) {
+		_, file, line, _ = Caller(2)
+	} else {
+		rpc := make([]uintptr, 1)
+		n := gentraceback(pc, sp, 0, (*g)(addr), 4, &rpc[0], len(rpc), nil, nil, 0)
+		if n >= 1 {
+			frame, _ := CallersFrames(rpc).Next()
+			file, line = frame.File, frame.Line
+		}
+	}
 
 	StTrace.append(goid, StTraceEvent{
 		Goid: goid,
