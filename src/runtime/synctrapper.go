@@ -38,6 +38,7 @@ const (
 	ChanCloseEvent
 	ChanReflectSendEvent
 	ChanReflectRecvEvent
+	ChanReflectCloseEvent
 	SelectSendEvent
 	SelectBufSendEvent
 	SelectBufRecvEvent
@@ -53,6 +54,9 @@ const (
 	CondBroadcastEvent
 	NewProcEvent
 	MainFuncStartEvent
+	ChanMakeEvent
+	ChanMake64Event
+	ChanReflectMakeEvent
 )
 
 type StTraceEvent struct {
@@ -111,7 +115,7 @@ func (s *stTrace) append(id int64, event StTraceEvent) {
 }
 
 //go:linkname MarkEvent sync.runtime_MarkEvent
-func MarkEvent(addr unsafe.Pointer, goid int64, event int, pc, sp uintptr) {
+func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 	if !SyncTraceEnable {
 		return
 	}
@@ -124,10 +128,17 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, pc, sp uintptr) {
 	var line int
 
 	if event != int(NewProcEvent) {
-		_, file, line, _ = Caller(2)
+		_, file, line, _ = Caller(skip)
+
+		filegoexit := "asm_amd64.s"
+		szfile := len(file)
+		szexit := len(filegoexit)
+		if szfile > szexit && file[szfile-szexit:] == filegoexit {
+			_, file, line, _ = Caller(skip + 1)
+		}
 	} else {
 		rpc := make([]uintptr, 1)
-		n := gentraceback(pc, sp, 0, (*g)(addr), 4, &rpc[0], len(rpc), nil, nil, 0)
+		n := gcallers((*g)(addr), 2, rpc)
 		if n >= 1 {
 			frame, _ := CallersFrames(rpc).Next()
 			file, line = frame.File, frame.Line

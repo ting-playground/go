@@ -97,7 +97,7 @@ func (wg *WaitGroup) Add(delta int) {
 
 // Done decrements the WaitGroup counter by one.
 func (wg *WaitGroup) Done() {
-	runtime_MarkEvent(unsafe.Pointer(wg), 0, int(runtime.WGDoneEvent), 0, 0)
+	runtime_MarkEvent(unsafe.Pointer(wg), 0, int(runtime.WGDoneEvent), 2)
 	wg.Add(-1)
 }
 
@@ -108,7 +108,7 @@ func (wg *WaitGroup) Wait() {
 		_ = *statep // trigger nil deref early
 		race.Disable()
 	}
-	runtime_MarkEvent(unsafe.Pointer(wg), 0, int(runtime.WGWaitEvent), 0, 0)
+	runtime_MarkEvent(unsafe.Pointer(wg), 0, int(runtime.WGWaitEvent), 2)
 	for {
 		state := atomic.LoadUint64(statep)
 		v := int32(state >> 32)
