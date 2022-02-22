@@ -856,7 +856,7 @@ func exprFmt(n Node, s fmt.State, prec int) {
 
 	case OMAKEMAP, OMAKECHAN, OMAKESLICE:
 		n := n.(*MakeExpr)
-		if n.Cap != nil {
+		if n.Cap != nil && n.Op() != OMAKECHAN {
 			fmt.Fprintf(s, "make(%v, %v, %v)", n.Type(), n.Len, n.Cap)
 			return
 		}

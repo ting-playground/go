@@ -463,7 +463,7 @@ func make1() {
         _ = &make /* ERROR cannot take address */ (map[string]bool)
 
 	// channels
-	_ = make /* ERROR arguments */ (chan int, 10, 20)
+	_ = make(chan int, 10, 20)
 	_ = make(chan int, int /* ERROR not an expression */)
 	_ = make(chan<- int, "foo" /* ERROR cannot convert */)
 	_ = make(chan int, - /* ERROR must not be negative */ 10)

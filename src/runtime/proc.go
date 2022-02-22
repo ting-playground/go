@@ -143,6 +143,8 @@ var initSigmask sigset
 
 // The main goroutine.
 func main() {
+	randomizeScheduler = randomizeEnabled()
+	SyncTraceEnable = syncTraceEnabled()
 	g := getg()
 
 	// Racectx of m0->g0 is used only as the parent of the main goroutine.
@@ -4251,8 +4253,10 @@ func newproc(siz int32, fn *funcval) {
 	argp := add(unsafe.Pointer(&fn), sys.PtrSize)
 	gp := getg()
 	pc := getcallerpc()
+
 	systemstack(func() {
 		newg := newproc1(fn, argp, siz, gp, pc)
+		MarkEvent(unsafe.Pointer(gp), newg.goid, int(NewProcEvent), 0)
 
 		_p_ := getg().m.p.ptr()
 		runqput(_p_, newg, true)
@@ -5943,7 +5947,19 @@ func runqempty(_p_ *p) bool {
 // With the randomness here, as long as the tests pass
 // consistently with -race, they shouldn't have latent scheduling
 // assumptions.
-const randomizeScheduler = raceenabled
+var randomizeScheduler bool
+
+func randomizeEnabled() bool {
+	s := gogetenv("SYNCTRAPPER_RANDOM")
+	if s == "0" {
+		return false
+	}
+	if s == "1" {
+		return true
+	}
+
+	return raceenabled
+}
 
 // runqput tries to put g on the local runnable queue.
 // If next is false, runqput adds g to the tail of the runnable queue.

@@ -99,7 +99,7 @@ func _() {
 	slice[0]               // ERROR "slice\[0\] .* not used"
 	m[1]                   // ERROR "m\[1\] .* not used"
 	len(slice)             // ERROR "len\(slice\) .* not used"
-	make(chan int)         // ERROR "make\(chan int\) .* not used"
+	make(chan int)     	   // ERROR "make\(chan int\) .* not used"
 	make(map[int]int)      // ERROR "make\(map\[int\]int\) .* not used"
 	make([]int, 1)         // ERROR "make\(\[\]int, 1\) .* not used"
 	x * x                  // ERROR "x \* x .* not used"

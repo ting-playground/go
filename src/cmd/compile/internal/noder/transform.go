@@ -697,13 +697,21 @@ func transformMake(n *ir.CallExpr) ir.Node {
 
 	case types.TCHAN:
 		l = nil
+		var l2 ir.Node
 		if i < len(args) {
 			l = args[i]
 			i++
+			if i < len(args) {
+				l2 = args[i]
+				i ++
+			} else {
+				l2 = ir.NewInt(-1)
+			}
 		} else {
 			l = ir.NewInt(0)
+			l2 = ir.NewInt(-1)
 		}
-		nn = ir.NewMakeExpr(n.Pos(), ir.OMAKECHAN, l, nil)
+		nn = ir.NewMakeExpr(n.Pos(), ir.OMAKECHAN, l, l2)
 	default:
 		panic(fmt.Sprintf("transformMake: unexpected type %v", t))
 	}

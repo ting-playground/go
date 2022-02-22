@@ -5,6 +5,7 @@
 package sync
 
 import (
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -50,6 +51,7 @@ func NewCond(l Locker) *Cond {
 //    c.L.Unlock()
 //
 func (c *Cond) Wait() {
+	runtime_MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondWaitEvent), 2)
 	c.checker.check()
 	t := runtime_notifyListAdd(&c.notify)
 	c.L.Unlock()
@@ -62,6 +64,7 @@ func (c *Cond) Wait() {
 // It is allowed but not required for the caller to hold c.L
 // during the call.
 func (c *Cond) Signal() {
+	runtime_MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondSignalEvent), 2)
 	c.checker.check()
 	runtime_notifyListNotifyOne(&c.notify)
 }
@@ -71,6 +74,7 @@ func (c *Cond) Signal() {
 // It is allowed but not required for the caller to hold c.L
 // during the call.
 func (c *Cond) Broadcast() {
+	runtime_MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondBroadcastEvent), 2)
 	c.checker.check()
 	runtime_notifyListNotifyAll(&c.notify)
 }

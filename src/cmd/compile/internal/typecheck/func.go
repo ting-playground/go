@@ -823,23 +823,51 @@ func tcMake(n *ir.CallExpr) ir.Node {
 
 	case types.TCHAN:
 		l = nil
-		if i < len(args) {
-			l = args[i]
-			i++
-			l = Expr(l)
-			l = DefaultLit(l, types.Types[types.TINT])
-			if l.Type() == nil {
-				n.SetType(nil)
-				return n
-			}
-			if !checkmake(t, "buffer", &l) {
-				n.SetType(nil)
-				return n
-			}
+		var arguments []ir.Node
+		if i >= len(args) {
+			arguments = append(arguments, ir.NewInt(0), ir.NewInt(-1))
 		} else {
-			l = ir.NewInt(0)
+			if i < len(args) {
+				l = args[i]
+				i++
+				l = Expr(l)
+				l = DefaultLit(l, types.Types[types.TINT])
+				if l.Type() == nil {
+					n.SetType(nil)
+					return n
+				}
+				if !checkmake(t, "buffer", &l) {
+					n.SetType(nil)
+					return n
+				}
+				arguments = append(arguments, l)
+			}
+
+			if i < len(args) {
+				l = args[i]
+				i++
+				l = Expr(l)
+				l = DefaultLit(l, types.Types[types.TINT64])
+				if l.Type() == nil {
+					n.SetType(nil)
+					return n
+				}
+				if !checkmake(t, "buffer", &l) {
+					n.SetType(nil)
+					return n
+				}
+				arguments = append(arguments, l)
+			}
 		}
-		nn = ir.NewMakeExpr(n.Pos(), ir.OMAKECHAN, l, nil)
+
+		switch len(arguments) {
+		case 1:
+			nn = ir.NewMakeExpr(n.Pos(), ir.OMAKECHAN, arguments[0], ir.NewInt(-1))
+		case 2:
+			nn = ir.NewMakeExpr(n.Pos(), ir.OMAKECHAN, arguments[0], arguments[1])
+		default:
+			i = 0
+		}
 	}
 
 	if i < len(args) {

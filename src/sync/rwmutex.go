@@ -6,6 +6,7 @@ package sync
 
 import (
 	"internal/race"
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -58,6 +59,10 @@ func (rw *RWMutex) RLock() {
 		_ = rw.w.state
 		race.Disable()
 	}
+	if runtime.SyncTraceEnable {
+		runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RLockEvent), 4)
+	}
+
 	if atomic.AddInt32(&rw.readerCount, 1) < 0 {
 		// A writer is pending, wait for it.
 		runtime_SemacquireMutex(&rw.readerSem, false, 0)
@@ -78,6 +83,11 @@ func (rw *RWMutex) RUnlock() {
 		race.ReleaseMerge(unsafe.Pointer(&rw.writerSem))
 		race.Disable()
 	}
+
+	if runtime.SyncTraceEnable {
+		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RUnlockEvent), 2)
+	}
+
 	if r := atomic.AddInt32(&rw.readerCount, -1); r < 0 {
 		// Outlined slow-path to allow the fast-path to be inlined
 		rw.rUnlockSlow(r)
@@ -107,6 +117,11 @@ func (rw *RWMutex) Lock() {
 		_ = rw.w.state
 		race.Disable()
 	}
+
+	if runtime.SyncTraceEnable {
+		runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WLockEvent), 3)
+	}
+
 	// First, resolve competition with other writers.
 	rw.w.Lock()
 	// Announce to readers there is a pending writer.
@@ -133,6 +148,10 @@ func (rw *RWMutex) Unlock() {
 		_ = rw.w.state
 		race.Release(unsafe.Pointer(&rw.readerSem))
 		race.Disable()
+	}
+
+	if runtime.SyncTraceEnable {
+		runtime_MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WUnlockEvent), 2)
 	}
 
 	// Announce to readers there is no active writer.

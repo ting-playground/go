@@ -24,12 +24,12 @@ var mutex *sync.Mutex
 
 func small5() { // ERROR "can inline small5"
 	// the Unlock fast path should be inlined
-	mutex.Unlock() // ERROR "inlining call to sync\.\(\*Mutex\)\.Unlock"
+	mutex.Unlock()
 }
 
 func small6() { // ERROR "can inline small6"
 	// the Lock fast path should be inlined
-	mutex.Lock() // ERROR "inlining call to sync\.\(\*Mutex\)\.Lock"
+	mutex.Lock()
 }
 
 var once *sync.Once
@@ -43,11 +43,11 @@ var rwmutex *sync.RWMutex
 
 func small8() { // ERROR "can inline small8"
         // the RUnlock fast path should be inlined
-        rwmutex.RUnlock() // ERROR "inlining call to sync\.\(\*RWMutex\)\.RUnlock"
+        rwmutex.RUnlock()
 }
 
 func small9() { // ERROR "can inline small9"
         // the RLock fast path should be inlined
-        rwmutex.RLock() // ERROR "inlining call to sync\.\(\*RWMutex\)\.RLock"
+        rwmutex.RLock()
 }
 

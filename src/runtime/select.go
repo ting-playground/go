@@ -246,6 +246,78 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	var caseSuccess bool
 	var caseReleaseTime int64 = -1
 	var recvOK bool
+
+	if SyncTrapperMap.IsEnabled() {
+		casj := int(fastrandn(uint32(norder)))
+
+		if block && fastrandn(uint32(ncases)) == 0 {
+			// Try goto the default branch
+			goto normal
+		}
+
+		casi = int(pollorder[casj])
+		cas = &scases[casi]
+		c = cas.c
+		if casi >= nsends {
+			sg = c.sendq.dequeue()
+			if sg != nil {
+				goto recv
+			}
+			if c.qcount > 0 {
+				goto bufrecv
+			}
+			if c.closed != 0 {
+				goto rclose
+			}
+		} else {
+			if raceenabled {
+				racereadpc(c.raceaddr(), casePC(casi), chansendpc)
+			}
+			if c.closed != 0 {
+				goto sclose
+			}
+			sg = c.recvq.dequeue()
+			if sg != nil {
+				goto send
+			}
+			if c.qcount < c.dataqsiz {
+				goto bufsend
+			}
+		}
+
+		selunlock(scases, lockorder)
+		waitSched(c)
+		sellock(scases, lockorder)
+
+		if casi >= nsends {
+			sg = c.sendq.dequeue()
+			if sg != nil {
+				goto recv
+			}
+			if c.qcount > 0 {
+				goto bufrecv
+			}
+			if c.closed != 0 {
+				goto rclose
+			}
+		} else {
+			if raceenabled {
+				racereadpc(c.raceaddr(), casePC(casi), chansendpc)
+			}
+			if c.closed != 0 {
+				goto sclose
+			}
+			sg = c.recvq.dequeue()
+			if sg != nil {
+				goto send
+			}
+			if c.qcount < c.dataqsiz {
+				goto bufsend
+			}
+		}
+	}
+
+normal:
 	for _, casei := range pollorder {
 		casi = int(casei)
 		cas = &scases[casi]
@@ -420,6 +492,7 @@ bufrecv:
 	if msanenabled && cas.elem != nil {
 		msanwrite(cas.elem, c.elemtype.size)
 	}
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectBufRecvEvent), 2)
 	recvOK = true
 	qp = chanbuf(c, c.recvx)
 	if cas.elem != nil {
@@ -443,6 +516,7 @@ bufsend:
 	if msanenabled {
 		msanread(cas.elem, c.elemtype.size)
 	}
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectBufSendEvent), 2)
 	typedmemmove(c.elemtype, chanbuf(c, c.sendx), cas.elem)
 	c.sendx++
 	if c.sendx == c.dataqsiz {
@@ -454,6 +528,7 @@ bufsend:
 
 recv:
 	// can receive from sleeping sender (sg)
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectRecvEvent), 2)
 	recv(c, sg, cas.elem, func() { selunlock(scases, lockorder) }, 2)
 	if debugSelect {
 		print("syncrecv: cas0=", cas0, " c=", c, "\n")
@@ -464,6 +539,7 @@ recv:
 rclose:
 	// read at end of closed channel
 	selunlock(scases, lockorder)
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectCloseRecvEvent), 2)
 	recvOK = false
 	if cas.elem != nil {
 		typedmemclr(c.elemtype, cas.elem)
@@ -481,6 +557,7 @@ send:
 	if msanenabled {
 		msanread(cas.elem, c.elemtype.size)
 	}
+	MarkEvent(unsafe.Pointer(c), 0, int(SelectSendEvent), 2)
 	send(c, sg, cas.elem, func() { selunlock(scases, lockorder) }, 2)
 	if debugSelect {
 		print("syncsend: cas0=", cas0, " c=", c, "\n")

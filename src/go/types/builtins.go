@@ -463,12 +463,14 @@ func (check *Checker) builtin(x *operand, call *ast.CallExpr, id builtinId) (_ b
 		min, max := -1, 10
 		var valid func(t Type) bool
 		valid = func(t Type) bool {
-			var m int
+			var m, delta int
 			switch t := optype(t).(type) {
 			case *Slice:
-				m = 2
-			case *Map, *Chan:
-				m = 1
+				m, delta = 2, 1
+			case *Map:
+				m, delta = 1, 1
+			case *Chan:
+				m, delta = 1, 2
 			case *_Sum:
 				return t.is(valid)
 			default:
@@ -478,7 +480,7 @@ func (check *Checker) builtin(x *operand, call *ast.CallExpr, id builtinId) (_ b
 				min = m
 			}
 			if m+1 < max {
-				max = m + 1
+				max = m + delta
 			}
 			return true
 		}
@@ -505,7 +507,7 @@ func (check *Checker) builtin(x *operand, call *ast.CallExpr, id builtinId) (_ b
 				sizes = append(sizes, size)
 			}
 		}
-		if len(sizes) == 2 && sizes[0] > sizes[1] {
+		if _, ok := optype(T).(*Chan); !ok && len(sizes) == 2 && sizes[0] > sizes[1] {
 			check.invalidArg(call.Args[1], _SwappedMakeArgs, "length and capacity swapped")
 			// safe to continue
 		}
