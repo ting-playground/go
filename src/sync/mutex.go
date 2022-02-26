@@ -73,7 +73,7 @@ const (
 func (m *Mutex) Lock() {
 	// Fast path: grab unlocked mutex.
 	if runtime.SyncTraceEnable {
-		runtime.MarkEvent(unsafe.Pointer(m), 0, int(runtime.LockEvent), 4)
+		defer runtime.MarkEvent(unsafe.Pointer(m), 0, int(runtime.LockEvent), 4)
 	}
 
 	if atomic.CompareAndSwapInt32(&m.state, 0, mutexLocked) {
@@ -187,9 +187,7 @@ func (m *Mutex) Unlock() {
 		race.Release(unsafe.Pointer(m))
 	}
 
-	if runtime.SyncTraceEnable {
-		runtime_MarkEvent(unsafe.Pointer(m), 0, int(runtime.UnlockEvent), 2)
-	}
+	defer runtime.MarkEvent(unsafe.Pointer(m), 0, int(runtime.UnlockEvent), 2)
 
 	// Fast path: drop lock bit.
 	new := atomic.AddInt32(&m.state, -mutexLocked)

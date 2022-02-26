@@ -673,6 +673,7 @@ var _ TB = (*B)(nil)
 // may be called simultaneously from multiple goroutines.
 type T struct {
 	common
+	*suspectTests
 	isParallel bool
 	isEnvSet   bool
 	context    *testContext // For running tests and subtests.
@@ -1281,6 +1282,7 @@ func (t *T) Run(name string, f func(t *T)) bool {
 	// continue walking the stack into the parent test.
 	var pc [maxStackLen]uintptr
 	n := runtime.Callers(2, pc[:])
+
 	t = &T{
 		common: common{
 			barrier: make(chan bool),
@@ -1291,7 +1293,8 @@ func (t *T) Run(name string, f func(t *T)) bool {
 			creator: pc[:n],
 			chatty:  t.chatty,
 		},
-		context: t.context,
+		suspectTests: t.suspectTests,
+		context:      t.context,
 	}
 	t.w = indenter{&t.common}
 
@@ -1574,6 +1577,7 @@ func RunTests(matchString func(pat, str string) (bool, error), tests []InternalT
 
 func runTests(matchString func(pat, str string) (bool, error), tests []InternalTest, deadline time.Time) (ran, ok bool) {
 	ok = true
+
 	for _, procs := range cpuList {
 		runtime.GOMAXPROCS(procs)
 		for i := uint(0); i < *count; i++ {
@@ -1588,14 +1592,36 @@ func runTests(matchString func(pat, str string) (bool, error), tests []InternalT
 					barrier: make(chan bool),
 					w:       os.Stdout,
 				},
+				suspectTests: &suspectTests{
+					allTests: make(map[string]testWithIndex),
+					susTests: make(map[string]testWithIndex),
+					maxRetry: 10,
+				},
 				context: ctx,
 			}
+			t.AddAllTests(tests)
+			if len(tests) != len(t.ListAllTests()) {
+				panic("synctrapper: some tests is not add to all tests")
+			}
+
 			if Verbose() {
 				t.chatty = newChattyPrinter(t.w)
 			}
 			tRunner(t, func(t *T) {
-				for _, test := range tests {
+				for _, test := range t.ListAllTests() {
+					if WhiteList.Lookup(test.Name) {
+						continue
+					}
+
 					t.Run(test.Name, test.F)
+				}
+
+				retry := int(atomic.LoadInt32(&t.maxRetry))
+				for n := 0; n < retry && t.NumSuspects() > 0; n++ {
+					suspects := t.ListSuspects()
+					for _, test := range suspects {
+						t.Run(test.Name, test.F)
+					}
 				}
 			})
 			select {

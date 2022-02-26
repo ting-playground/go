@@ -19,9 +19,7 @@ func syncTraceEnabled() bool {
 	return false
 }
 
-var StTrace = &stTrace{
-	traces: make(map[int64][]StTraceEvent),
-}
+var StTrace = &stTrace{}
 
 type SyncEventType int
 
@@ -74,7 +72,7 @@ func (s StTraceEvent) IsType(t SyncEventType) bool {
 
 type stTrace struct {
 	mu     mutex
-	traces map[int64][]StTraceEvent
+	traces []StTraceEvent
 }
 
 func (s *stTrace) lock() {
@@ -93,28 +91,59 @@ func (s *stTrace) unlock() {
 
 func (s *stTrace) Reset() {
 	s.lock()
-	s.traces = make(map[int64][]StTraceEvent)
+	s.traces = []StTraceEvent{}
 	s.unlock()
 }
 
-func (s *stTrace) Get() [][]StTraceEvent {
-	var ret [][]StTraceEvent
+func (s *stTrace) Get() []StTraceEvent {
+	var result []StTraceEvent
 	s.lock()
-	for _, event := range s.traces {
-		ret = append(ret, event)
+	result = make([]StTraceEvent, len(s.traces))
+	copy(result, s.traces)
+	s.unlock()
+
+	return result
+}
+
+func (s *stTrace) append(event StTraceEvent) {
+	s.lock()
+	s.traces = append(s.traces, event)
+	s.unlock()
+}
+
+func hasSuffix(target, suffix string) bool {
+	szlhs := len(target)
+	szrhs := len(suffix)
+	return szlhs > szrhs && target[szlhs-szrhs:] == suffix
+}
+
+func markEventNewproc(gp *g, goid int64) {
+	if !SyncTraceEnable {
+		return
 	}
-	s.unlock()
 
-	return ret
+	var file string
+	var line int
+
+	rpc := make([]uintptr, 1)
+	n := gcallers(gp, 2, rpc)
+	if n >= 1 {
+		frame, _ := CallersFrames(rpc).Next()
+		file, line = frame.File, frame.Line
+	}
+
+	StTrace.append(StTraceEvent{
+		Goid: goid,
+		Now:  nanotime(),
+		Type: int(NewProcEvent),
+		Addr: unsafe.Pointer(gp),
+		File: file,
+		Line: line,
+	})
+
+	return
 }
 
-func (s *stTrace) append(id int64, event StTraceEvent) {
-	s.lock()
-	s.traces[id] = append(s.traces[id], event)
-	s.unlock()
-}
-
-//go:linkname MarkEvent sync.runtime_MarkEvent
 func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 	if !SyncTraceEnable {
 		return
@@ -126,26 +155,66 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 
 	var file string
 	var line int
+	/*
+		for {
+			if event == int(NewProcEvent) {
+				rpc := make([]uintptr, 1)
+				n := gcallers((*g)(addr), 2, rpc)
+				if n >= 1 {
+					frame, _ := CallersFrames(rpc).Next()
+					file, line = frame.File, frame.Line
+				}
+				break
+			}
 
-	if event != int(NewProcEvent) {
-		_, file, line, _ = Caller(skip)
+			pc := make([]uintptr, 10)
+			n := Callers(3, pc)
+			if n <= 0 {
+				break
+			}
+			pc = pc[:n]
 
-		filegoexit := "asm_amd64.s"
-		szfile := len(file)
-		szexit := len(filegoexit)
-		if szfile > szexit && file[szfile-szexit:] == filegoexit {
-			_, file, line, _ = Caller(skip + 1)
+			frames := CallersFrames(pc)
+
+			var frame Frame
+
+			for i := 3; i < skip+1; i++ {
+				frame, _ = frames.Next()
+				file, line = frame.File, frame.Line
+				if hasSuffix(file, "trap.go") {
+					break
+				}
+			}
+
+			if skip == 4 && !hasSuffix(file, "trapper.go") {
+				file, line = "", 0
+				break
+			}
+
+			frame, _ = frames.Next()
+			file, line = frame.File, frame.Line
+			if hasSuffix(file, "asm_amd64.s") {
+				frame, _ = frames.Next()
+				file, line = frame.File, frame.Line
+			}
+			break
+		}
+	*/
+	if skip == 4 {
+		_, file, line, _ = Caller(3)
+		if hasSuffix(file, "trapper.go") {
+			_, file, line, _ = Caller(4)
 		}
 	} else {
-		rpc := make([]uintptr, 1)
-		n := gcallers((*g)(addr), 2, rpc)
-		if n >= 1 {
-			frame, _ := CallersFrames(rpc).Next()
-			file, line = frame.File, frame.Line
+		_, file, line, _ = Caller(skip)
+		if hasSuffix(file, "src/context/context.go") {
+			_, file, line, _ = Caller(skip + 1)
+		} else if hasSuffix(file, "asm_amd64.s") {
+			_, file, line, _ = Caller(skip + 1)
 		}
 	}
 
-	StTrace.append(goid, StTraceEvent{
+	StTrace.append(StTraceEvent{
 		Goid: goid,
 		Now:  nanotime(),
 		Type: event,

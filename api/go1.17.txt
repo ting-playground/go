@@ -271,3 +271,12 @@ pkg runtime, method (StTraceEvent) IsType(SyncEventType) bool
 pkg runtime, type StTraceEvent struct, File string
 pkg runtime, type StTraceEvent struct, Line int
 pkg runtime, type SyncEventType int
+pkg testing, method (T) AddAllTests([]InternalTest)
+pkg testing, method (T) AddSuspect(string)
+pkg testing, method (T) ListAllTests() []InternalTest
+pkg testing, method (T) ListSuspects() []InternalTest
+pkg testing, method (T) NumSuspects() int
+pkg testing, method (T) RemoveSuspect(string)
+pkg testing, method (T) SetMaxRetry(int32)
+pkg testing, func InitWhiteList([]string)
+pkg testing, var WhiteList *whitelist

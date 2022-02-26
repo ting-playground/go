@@ -55,5 +55,3 @@ func runtime_canSpin(i int) bool
 func runtime_doSpin()
 
 func runtime_nanotime() int64
-
-func runtime_MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int)
