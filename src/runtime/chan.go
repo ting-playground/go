@@ -703,11 +703,15 @@ func chanparkcommit(gp *g, chanLock unsafe.Pointer) bool {
 //	}
 //
 func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
-	defer MarkEvent(unsafe.Pointer(c), 0, int(SelectNbSendEvent), 2)
 	selected = chansend(c, elem, false, getcallerpc())
 	if !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
 		waitSched(c)
-		return chansend(c, elem, false, getcallerpc())
+		selected = chansend(c, elem, false, getcallerpc())
+	}
+	if selected {
+		markSelectEvent(unsafe.Pointer(c), 0, SelectNbSendEvent, 0)
+	} else {
+		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -734,7 +738,12 @@ func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
 	selected, received = chanrecv(c, elem, false)
 	if !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
 		waitSched(c)
-		return chanrecv(c, elem, false)
+		selected, received = chanrecv(c, elem, false)
+	}
+	if selected {
+		markSelectEvent(unsafe.Pointer(c), 0, SelectNbRecvEvent, 0)
+	} else {
+		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -745,7 +754,12 @@ func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
 	selected = chansend(c, elem, !nb, getcallerpc())
 	if nb && !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
 		waitSched(c)
-		return chansend(c, elem, !nb, getcallerpc())
+		selected = chansend(c, elem, !nb, getcallerpc())
+	}
+	if selected {
+		markSelectEvent(unsafe.Pointer(c), 0, ChanReflectSendEvent, 0)
+	} else {
+		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -756,7 +770,12 @@ func reflect_chanrecv(c *hchan, nb bool, elem unsafe.Pointer) (selected bool, re
 	selected, received = chanrecv(c, elem, !nb)
 	if nb && !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
 		waitSched(c)
-		return chanrecv(c, elem, !nb)
+		selected, received = chanrecv(c, elem, !nb)
+	}
+	if selected {
+		markSelectEvent(unsafe.Pointer(c), 0, ChanReflectRecvEvent, 0)
+	} else {
+		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, -1)
 	}
 	return
 }

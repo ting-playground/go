@@ -259,11 +259,18 @@ pkg runtime, const WUnlockEvent = 3
 pkg runtime, const ChanReflectMakeEvent = 30
 pkg runtime, const ChanMake64Event = 29
 pkg runtime, const ChanMakeEvent = 28
+pkg runtime, const CtxCancelEvent = 31
+pkg runtime, const CtxCancelEvent SyncEventType
+pkg runtime, const CtxDoneEvent = 32
+pkg runtime, const CtxDoneEvent SyncEventType
+pkg runtime, const SelectWakeUpEvent = 33
+pkg runtime, const SelectWakeUpEvent SyncEventType
 pkg runtime, type StTraceEvent struct
 pkg runtime, type StTraceEvent struct, Addr unsafe.Pointer
 pkg runtime, type StTraceEvent struct, Goid int64
 pkg runtime, type StTraceEvent struct, Now int64
 pkg runtime, type StTraceEvent struct, Type int
+pkg runtime, type StTraceEvent struct, Hold int64
 pkg runtime, var StTrace *stTrace
 pkg runtime, func MarkEvent(unsafe.Pointer, int64, int, int)
 pkg runtime, var SyncTraceEnable bool

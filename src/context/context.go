@@ -50,9 +50,11 @@ package context
 import (
 	"errors"
 	"internal/reflectlite"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 // A Context carries a deadline, a cancellation signal, and other values across
@@ -356,6 +358,7 @@ func (c *cancelCtx) Value(key interface{}) interface{} {
 }
 
 func (c *cancelCtx) Done() <-chan struct{} {
+	defer runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CtxDoneEvent), 2)
 	d := c.done.Load()
 	if d != nil {
 		return d.(chan struct{})
@@ -398,6 +401,8 @@ func (c *cancelCtx) cancel(removeFromParent bool, err error) {
 	if err == nil {
 		panic("context: internal error: missing cancel error")
 	}
+
+	defer runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CtxCancelEvent), 3)
 	c.mu.Lock()
 	if c.err != nil {
 		c.mu.Unlock()

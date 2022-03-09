@@ -354,6 +354,7 @@ normal:
 	if !block {
 		selunlock(scases, lockorder)
 		casi = -1
+		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, int64(casi))
 		goto retc
 	}
 
@@ -479,6 +480,7 @@ normal:
 	}
 
 	selunlock(scases, lockorder)
+	markSelectEvent(unsafe.Pointer(c), 0, SelectWakeUpEvent, int64(casi))
 	goto retc
 
 bufrecv:
@@ -492,7 +494,6 @@ bufrecv:
 	if msanenabled && cas.elem != nil {
 		msanwrite(cas.elem, c.elemtype.size)
 	}
-	defer MarkEvent(unsafe.Pointer(c), 0, int(SelectBufRecvEvent), 2)
 	recvOK = true
 	qp = chanbuf(c, c.recvx)
 	if cas.elem != nil {
@@ -505,6 +506,7 @@ bufrecv:
 	}
 	c.qcount--
 	selunlock(scases, lockorder)
+	markSelectEvent(unsafe.Pointer(c), 0, SelectBufRecvEvent, int64(casi))
 	goto retc
 
 bufsend:
@@ -516,7 +518,6 @@ bufsend:
 	if msanenabled {
 		msanread(cas.elem, c.elemtype.size)
 	}
-	defer MarkEvent(unsafe.Pointer(c), 0, int(SelectBufSendEvent), 2)
 	typedmemmove(c.elemtype, chanbuf(c, c.sendx), cas.elem)
 	c.sendx++
 	if c.sendx == c.dataqsiz {
@@ -524,22 +525,22 @@ bufsend:
 	}
 	c.qcount++
 	selunlock(scases, lockorder)
+	markSelectEvent(unsafe.Pointer(c), 0, SelectBufSendEvent, int64(casi))
 	goto retc
 
 recv:
 	// can receive from sleeping sender (sg)
-	defer MarkEvent(unsafe.Pointer(c), 0, int(SelectRecvEvent), 2)
 	recv(c, sg, cas.elem, func() { selunlock(scases, lockorder) }, 2)
 	if debugSelect {
 		print("syncrecv: cas0=", cas0, " c=", c, "\n")
 	}
 	recvOK = true
+	markSelectEvent(unsafe.Pointer(c), 0, SelectRecvEvent, int64(casi))
 	goto retc
 
 rclose:
 	// read at end of closed channel
 	selunlock(scases, lockorder)
-	defer MarkEvent(unsafe.Pointer(c), 0, int(SelectCloseRecvEvent), 2)
 	recvOK = false
 	if cas.elem != nil {
 		typedmemclr(c.elemtype, cas.elem)
@@ -547,6 +548,7 @@ rclose:
 	if raceenabled {
 		raceacquire(c.raceaddr())
 	}
+	markSelectEvent(unsafe.Pointer(c), 0, SelectCloseRecvEvent, int64(casi))
 	goto retc
 
 send:
@@ -557,11 +559,11 @@ send:
 	if msanenabled {
 		msanread(cas.elem, c.elemtype.size)
 	}
-	defer MarkEvent(unsafe.Pointer(c), 0, int(SelectSendEvent), 2)
 	send(c, sg, cas.elem, func() { selunlock(scases, lockorder) }, 2)
 	if debugSelect {
 		print("syncsend: cas0=", cas0, " c=", c, "\n")
 	}
+	markSelectEvent(unsafe.Pointer(c), 0, SelectSendEvent, int64(casi))
 	goto retc
 
 retc:

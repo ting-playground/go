@@ -55,6 +55,9 @@ const (
 	ChanMakeEvent
 	ChanMake64Event
 	ChanReflectMakeEvent
+	CtxCancelEvent
+	CtxDoneEvent
+	SelectWakeUpEvent
 )
 
 type StTraceEvent struct {
@@ -64,6 +67,7 @@ type StTraceEvent struct {
 	Addr unsafe.Pointer
 	File string
 	Line int
+	Hold int64
 }
 
 func (s StTraceEvent) IsType(t SyncEventType) bool {
@@ -144,6 +148,42 @@ func markEventNewproc(gp *g, goid int64) {
 	return
 }
 
+func markSelectEvent(addr unsafe.Pointer, goid int64, event SyncEventType, order int64) {
+	if !SyncTraceEnable {
+		return
+	}
+
+	if goid == 0 {
+		goid = getg().goid
+	}
+
+	var file string
+	var line int
+
+	_, file, line, _ = Caller(2)
+
+	isCtxType := event == CtxDoneEvent || event == CtxCancelEvent
+
+	// skip internal synchronizations in context
+	if !isCtxType && hasSuffix(file, "src/context/context.go") {
+		file, line = "", 0
+	} else if hasSuffix(file, "asm_amd64.s") {
+		_, file, line, _ = Caller(3)
+	}
+
+	if file != "" && line != 0 {
+		StTrace.append(StTraceEvent{
+			Goid: goid,
+			Now:  nanotime(),
+			Type: int(event),
+			Addr: addr,
+			File: file,
+			Line: line,
+			Hold: order,
+		})
+	}
+}
+
 func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 	if !SyncTraceEnable {
 		return
@@ -155,73 +195,42 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 
 	var file string
 	var line int
-	/*
-		for {
-			if event == int(NewProcEvent) {
-				rpc := make([]uintptr, 1)
-				n := gcallers((*g)(addr), 2, rpc)
-				if n >= 1 {
-					frame, _ := CallersFrames(rpc).Next()
-					file, line = frame.File, frame.Line
-				}
-				break
-			}
 
-			pc := make([]uintptr, 10)
-			n := Callers(3, pc)
-			if n <= 0 {
-				break
-			}
-			pc = pc[:n]
-
-			frames := CallersFrames(pc)
-
-			var frame Frame
-
-			for i := 3; i < skip+1; i++ {
-				frame, _ = frames.Next()
-				file, line = frame.File, frame.Line
-				if hasSuffix(file, "trap.go") {
-					break
-				}
-			}
-
-			if skip == 4 && !hasSuffix(file, "trapper.go") {
-				file, line = "", 0
-				break
-			}
-
-			frame, _ = frames.Next()
-			file, line = frame.File, frame.Line
-			if hasSuffix(file, "asm_amd64.s") {
-				frame, _ = frames.Next()
-				file, line = frame.File, frame.Line
-			}
-			break
-		}
-	*/
 	if skip == 4 {
-		_, file, line, _ = Caller(3)
+		_, file, line, _ = Caller(skip - 1)
 		if hasSuffix(file, "trapper.go") {
-			_, file, line, _ = Caller(4)
+			_, file, line, _ = Caller(skip)
+		} else {
+			skip -= 1
 		}
 	} else {
 		_, file, line, _ = Caller(skip)
-		if hasSuffix(file, "src/context/context.go") {
-			_, file, line, _ = Caller(skip + 1)
+
+		eventType := SyncEventType(event)
+		isCtxType := eventType == CtxDoneEvent || eventType == CtxCancelEvent
+
+		// skip internal synchronizations in context
+		if !isCtxType && hasSuffix(file, "src/context/context.go") {
+			file, line = "", 0
 		} else if hasSuffix(file, "asm_amd64.s") {
 			_, file, line, _ = Caller(skip + 1)
 		}
 	}
 
-	StTrace.append(StTraceEvent{
-		Goid: goid,
-		Now:  nanotime(),
-		Type: event,
-		Addr: addr,
-		File: file,
-		Line: line,
-	})
+	if hasSuffix(file, "trapper/trap.go") {
+		_, file, line, _ = Caller(skip + 1)
+	}
+
+	if file != "" && line != 0 {
+		StTrace.append(StTraceEvent{
+			Goid: goid,
+			Now:  nanotime(),
+			Type: event,
+			Addr: addr,
+			File: file,
+			Line: line,
+		})
+	}
 }
 
 type syncTrapperMap struct {
@@ -262,26 +271,21 @@ func (s *syncTrapperMap) Load(c *hchan) int64 {
 	return -1
 }
 
-//go:norace
 func (s *syncTrapperMap) IsEnabled() bool {
 	return s.enable
 }
 
-//go:norace
 func (s *syncTrapperMap) Enable() {
 	s.enable = true
 }
 
-//go:norace
 func (s *syncTrapperMap) Disable() {
 	s.enable = false
 }
 
-//go:norace
 func (s *syncTrapperMap) Clear() {
 	s.Lock()
 	s.data = make(map[*hchan]int64)
-	s.ch = make(chan SyncSignal)
 	s.Unlock()
 }
 
