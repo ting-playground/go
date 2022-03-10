@@ -263,7 +263,7 @@ func appendWalkStmt(init *ir.Nodes, stmt ir.Node) {
 
 // The max number of defers in a function using open-coded defers. We enforce this
 // limit because the deferBits bitmask is currently a single byte (to minimize code size)
-const maxOpenDefers = 8
+const maxOpenDefers = 0
 
 // backingArrayPtrLen extracts the pointer and length from a slice or string.
 // This constructs two nodes referring to n, so n must be a cheapExpr.

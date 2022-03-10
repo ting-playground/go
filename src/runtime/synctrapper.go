@@ -58,6 +58,8 @@ const (
 	CtxCancelEvent
 	CtxDoneEvent
 	SelectWakeUpEvent
+	DeferEvent
+	DeferReturnEvent
 )
 
 type StTraceEvent struct {
@@ -121,7 +123,7 @@ func hasSuffix(target, suffix string) bool {
 	return szlhs > szrhs && target[szlhs-szrhs:] == suffix
 }
 
-func markEventNewproc(gp *g, goid int64) {
+func markNewproc(gp *g, goid int64) {
 	if !SyncTraceEnable {
 		return
 	}
@@ -143,9 +145,59 @@ func markEventNewproc(gp *g, goid int64) {
 		Addr: unsafe.Pointer(gp),
 		File: file,
 		Line: line,
+		Hold: goid,
 	})
 
 	return
+}
+
+func markLastDeferReturn() {
+	if !SyncTraceEnable {
+		return
+	}
+
+	goid := getg().goid
+
+	_, file, line, _ := Caller(2)
+
+	if hasSuffix(file, "asm_amd64.s") {
+		_, file, line, _ = Caller(3)
+	}
+
+	// This defer may calls CloseTrap
+	if hasSuffix(file, "reflect/value.go") {
+		_, file, line, _ = Caller(4)
+	}
+
+	StTrace.append(StTraceEvent{
+		Goid: goid,
+		Now:  nanotime(),
+		Type: int(DeferReturnEvent),
+		File: file,
+		Line: line,
+	})
+}
+
+func markDeferEvent() {
+	if !SyncTraceEnable {
+		return
+	}
+
+	goid := getg().goid
+
+	_, file, line, _ := Caller(2)
+
+	if hasSuffix(file, "asm_amd64.s") {
+		_, file, line, _ = Caller(3)
+	}
+
+	StTrace.append(StTraceEvent{
+		Goid: goid,
+		Now:  nanotime(),
+		Type: int(DeferEvent),
+		File: file,
+		Line: line,
+	})
 }
 
 func markSelectEvent(addr unsafe.Pointer, goid int64, event SyncEventType, order int64) {

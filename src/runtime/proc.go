@@ -4256,7 +4256,7 @@ func newproc(siz int32, fn *funcval) {
 
 	systemstack(func() {
 		newg := newproc1(fn, argp, siz, gp, pc)
-		// markEventNewproc(gp, newg.goid)
+		markNewproc(gp, newg.goid)
 
 		_p_ := getg().m.p.ptr()
 		runqput(_p_, newg, true)

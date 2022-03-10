@@ -268,6 +268,8 @@ func deferproc(siz int32, fn *funcval) { // arguments of fn follow fn
 		memmove(deferArgs(d), unsafe.Pointer(argp), uintptr(siz))
 	}
 
+	markDeferEvent()
+
 	// deferproc returns 0 normally.
 	// a deferred func that stops a panic
 	// makes the deferproc return 1.
@@ -321,6 +323,8 @@ func deferprocStack(d *_defer) {
 	*(*uintptr)(unsafe.Pointer(&d.fd)) = 0
 	*(*uintptr)(unsafe.Pointer(&d.link)) = uintptr(unsafe.Pointer(gp._defer))
 	*(*uintptr)(unsafe.Pointer(&gp._defer)) = uintptr(unsafe.Pointer(d))
+
+	markDeferEvent()
 
 	return0()
 	// No code can go here - the C return register has
@@ -553,6 +557,7 @@ func deferreturn() {
 	gp := getg()
 	d := gp._defer
 	if d == nil {
+		markLastDeferReturn()
 		return
 	}
 	sp := getcallersp()

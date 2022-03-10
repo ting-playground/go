@@ -265,6 +265,10 @@ pkg runtime, const CtxDoneEvent = 32
 pkg runtime, const CtxDoneEvent SyncEventType
 pkg runtime, const SelectWakeUpEvent = 33
 pkg runtime, const SelectWakeUpEvent SyncEventType
+pkg runtime, const DeferEvent = 34
+pkg runtime, const DeferEvent SyncEventType
+pkg runtime, const DeferReturnEvent = 35
+pkg runtime, const DeferReturnEvent SyncEventType
 pkg runtime, type StTraceEvent struct
 pkg runtime, type StTraceEvent struct, Addr unsafe.Pointer
 pkg runtime, type StTraceEvent struct, Goid int64
