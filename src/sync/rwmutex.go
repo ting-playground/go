@@ -59,8 +59,23 @@ func (rw *RWMutex) RLock() {
 		_ = rw.w.state
 		race.Disable()
 	}
-	if runtime.SyncTraceEnable {
-		defer runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RLockEvent), 4)
+
+	if atomic.AddInt32(&rw.readerCount, 1) < 0 {
+		// A writer is pending, wait for it.
+		runtime_SemacquireMutex(&rw.readerSem, false, 0)
+	}
+	if race.Enabled {
+		race.Enable()
+		race.Acquire(unsafe.Pointer(&rw.readerSem))
+	}
+
+	runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RLockEvent), 2)
+}
+
+func (rw *RWMutex) rLockInternal() {
+	if race.Enabled {
+		_ = rw.w.state
+		race.Disable()
 	}
 
 	if atomic.AddInt32(&rw.readerCount, 1) < 0 {
@@ -84,7 +99,23 @@ func (rw *RWMutex) RUnlock() {
 		race.Disable()
 	}
 
-	defer runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RUnlockEvent), 2)
+	if r := atomic.AddInt32(&rw.readerCount, -1); r < 0 {
+		// Outlined slow-path to allow the fast-path to be inlined
+		rw.rUnlockSlow(r)
+	}
+	if race.Enabled {
+		race.Enable()
+	}
+
+	runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.RUnlockEvent), 2)
+}
+
+func (rw *RWMutex) rUnlockInternal() {
+	if race.Enabled {
+		_ = rw.w.state
+		race.ReleaseMerge(unsafe.Pointer(&rw.writerSem))
+		race.Disable()
+	}
 
 	if r := atomic.AddInt32(&rw.readerCount, -1); r < 0 {
 		// Outlined slow-path to allow the fast-path to be inlined
@@ -116,12 +147,8 @@ func (rw *RWMutex) Lock() {
 		race.Disable()
 	}
 
-	if runtime.SyncTraceEnable {
-		defer runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WLockEvent), 4)
-	}
-
 	// First, resolve competition with other writers.
-	rw.w.Lock()
+	rw.w.lockInternal()
 	// Announce to readers there is a pending writer.
 	r := atomic.AddInt32(&rw.readerCount, -rwmutexMaxReaders) + rwmutexMaxReaders
 	// Wait for active readers.
@@ -133,6 +160,8 @@ func (rw *RWMutex) Lock() {
 		race.Acquire(unsafe.Pointer(&rw.readerSem))
 		race.Acquire(unsafe.Pointer(&rw.writerSem))
 	}
+
+	runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WLockEvent), 2)
 }
 
 // Unlock unlocks rw for writing. It is a run-time error if rw is
@@ -148,8 +177,6 @@ func (rw *RWMutex) Unlock() {
 		race.Disable()
 	}
 
-	defer runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WUnlockEvent), 2)
-
 	// Announce to readers there is no active writer.
 	r := atomic.AddInt32(&rw.readerCount, rwmutexMaxReaders)
 	if r >= rwmutexMaxReaders {
@@ -161,10 +188,12 @@ func (rw *RWMutex) Unlock() {
 		runtime_Semrelease(&rw.readerSem, false, 0)
 	}
 	// Allow other writers to proceed.
-	rw.w.Unlock()
+	rw.w.unlockInternal()
 	if race.Enabled {
 		race.Enable()
 	}
+
+	runtime.MarkEvent(unsafe.Pointer(rw), 0, int(runtime.WUnlockEvent), 2)
 }
 
 // RLocker returns a Locker interface that implements
@@ -175,5 +204,11 @@ func (rw *RWMutex) RLocker() Locker {
 
 type rlocker RWMutex
 
-func (r *rlocker) Lock()   { (*RWMutex)(r).RLock() }
-func (r *rlocker) Unlock() { (*RWMutex)(r).RUnlock() }
+func (r *rlocker) Lock() {
+	(*RWMutex)(r).rLockInternal()
+	runtime.MarkEvent(unsafe.Pointer(r), 0, int(runtime.RLockEvent), 2)
+}
+func (r *rlocker) Unlock() {
+	(*RWMutex)(r).RUnlock()
+	runtime.MarkEvent(unsafe.Pointer(r), 0, int(runtime.RUnlockEvent), 2)
+}

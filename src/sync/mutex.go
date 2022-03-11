@@ -72,10 +72,20 @@ const (
 // blocks until the mutex is available.
 func (m *Mutex) Lock() {
 	// Fast path: grab unlocked mutex.
-	if runtime.SyncTraceEnable {
-		defer runtime.MarkEvent(unsafe.Pointer(m), 0, int(runtime.LockEvent), 4)
+	if atomic.CompareAndSwapInt32(&m.state, 0, mutexLocked) {
+		if race.Enabled {
+			race.Acquire(unsafe.Pointer(m))
+		}
+		runtime.MarkEvent(unsafe.Pointer(m), 0, int(runtime.LockEvent), 2)
+		return
 	}
+	// Slow path (outlined so that the fast path can be inlined)
+	m.lockSlow()
+	runtime.MarkEvent(unsafe.Pointer(m), 0, int(runtime.LockEvent), 2)
+}
 
+func (m *Mutex) lockInternal() {
+	// Fast path: grab unlocked mutex.
 	if atomic.CompareAndSwapInt32(&m.state, 0, mutexLocked) {
 		if race.Enabled {
 			race.Acquire(unsafe.Pointer(m))
@@ -187,7 +197,21 @@ func (m *Mutex) Unlock() {
 		race.Release(unsafe.Pointer(m))
 	}
 
-	defer runtime.MarkEvent(unsafe.Pointer(m), 0, int(runtime.UnlockEvent), 2)
+	// Fast path: drop lock bit.
+	new := atomic.AddInt32(&m.state, -mutexLocked)
+	if new != 0 {
+		// Outlined slow path to allow inlining the fast path.
+		// To hide unlockSlow during tracing we skip one extra frame when tracing GoUnblock.
+		m.unlockSlow(new)
+	}
+	runtime.MarkEvent(unsafe.Pointer(m), 0, int(runtime.UnlockEvent), 2)
+}
+
+func (m *Mutex) unlockInternal() {
+	if race.Enabled {
+		_ = m.state
+		race.Release(unsafe.Pointer(m))
+	}
 
 	// Fast path: drop lock bit.
 	new := atomic.AddInt32(&m.state, -mutexLocked)

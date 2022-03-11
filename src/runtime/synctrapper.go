@@ -139,13 +139,14 @@ func markNewproc(gp *g, goid int64) {
 	}
 
 	StTrace.append(StTraceEvent{
-		Goid: goid,
+		Goid: gp.goid,
 		Now:  nanotime(),
 		Type: int(NewProcEvent),
 		Addr: unsafe.Pointer(gp),
 		File: file,
 		Line: line,
 		Hold: goid,
+		// No need function name
 	})
 
 	return
@@ -158,15 +159,10 @@ func markLastDeferReturn() {
 
 	goid := getg().goid
 
-	_, file, line, _ := Caller(2)
+	pc, file, line, _ := Caller(2)
 
 	if hasSuffix(file, "asm_amd64.s") {
-		_, file, line, _ = Caller(3)
-	}
-
-	// This defer may calls CloseTrap
-	if hasSuffix(file, "reflect/value.go") {
-		_, file, line, _ = Caller(4)
+		return
 	}
 
 	StTrace.append(StTraceEvent{
@@ -175,6 +171,7 @@ func markLastDeferReturn() {
 		Type: int(DeferReturnEvent),
 		File: file,
 		Line: line,
+		Addr: unsafe.Pointer(FuncForPC(pc)),
 	})
 }
 
@@ -185,10 +182,10 @@ func markDeferEvent() {
 
 	goid := getg().goid
 
-	_, file, line, _ := Caller(2)
+	pc, file, line, _ := Caller(2)
 
 	if hasSuffix(file, "asm_amd64.s") {
-		_, file, line, _ = Caller(3)
+		pc, file, line, _ = Caller(3)
 	}
 
 	StTrace.append(StTraceEvent{
@@ -197,6 +194,7 @@ func markDeferEvent() {
 		Type: int(DeferEvent),
 		File: file,
 		Line: line,
+		Addr: unsafe.Pointer(FuncForPC(pc)),
 	})
 }
 

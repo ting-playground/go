@@ -97,18 +97,18 @@ func (wg *WaitGroup) Add(delta int) {
 
 // Done decrements the WaitGroup counter by one.
 func (wg *WaitGroup) Done() {
-	defer runtime.MarkEvent(unsafe.Pointer(wg), 0, int(runtime.WGDoneEvent), 2)
 	wg.Add(-1)
+	runtime.MarkEvent(unsafe.Pointer(wg), 0, int(runtime.WGDoneEvent), 2)
 }
 
 // Wait blocks until the WaitGroup counter is zero.
 func (wg *WaitGroup) Wait() {
+	defer runtime.MarkEvent(unsafe.Pointer(wg), 0, int(runtime.WGWaitEvent), 2)
 	statep, semap := wg.state()
 	if race.Enabled {
 		_ = *statep // trigger nil deref early
 		race.Disable()
 	}
-	defer runtime.MarkEvent(unsafe.Pointer(wg), 0, int(runtime.WGWaitEvent), 2)
 	for {
 		state := atomic.LoadUint64(statep)
 		v := int32(state >> 32)

@@ -51,12 +51,12 @@ func NewCond(l Locker) *Cond {
 //    c.L.Unlock()
 //
 func (c *Cond) Wait() {
-	defer runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondWaitEvent), 2)
 	c.checker.check()
 	t := runtime_notifyListAdd(&c.notify)
 	c.L.Unlock()
 	runtime_notifyListWait(&c.notify, t)
 	c.L.Lock()
+	runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondWaitEvent), 2)
 }
 
 // Signal wakes one goroutine waiting on c, if there is any.
@@ -64,9 +64,9 @@ func (c *Cond) Wait() {
 // It is allowed but not required for the caller to hold c.L
 // during the call.
 func (c *Cond) Signal() {
-	defer runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondSignalEvent), 2)
 	c.checker.check()
 	runtime_notifyListNotifyOne(&c.notify)
+	runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondSignalEvent), 2)
 }
 
 // Broadcast wakes all goroutines waiting on c.
@@ -74,9 +74,9 @@ func (c *Cond) Signal() {
 // It is allowed but not required for the caller to hold c.L
 // during the call.
 func (c *Cond) Broadcast() {
-	defer runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondBroadcastEvent), 2)
 	c.checker.check()
 	runtime_notifyListNotifyAll(&c.notify)
+	runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondBroadcastEvent), 2)
 }
 
 // copyChecker holds back pointer to itself to detect object copying.
