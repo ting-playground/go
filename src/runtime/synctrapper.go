@@ -250,26 +250,14 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		goid = getg().goid
 	}
 
-	var file string
-	var line int
+	_, file, line, _ := Caller(skip)
 
-	if skip == 4 {
-		_, file, line, _ = Caller(skip - 1)
-		if hasSuffix(file, "trapper.go") {
-			_, file, line, _ = Caller(skip)
-		} else {
-			skip -= 1
-		}
-	} else {
-		_, file, line, _ = Caller(skip)
+	eventType := SyncEventType(event)
+	isCtxType := eventType == CtxDoneEvent || eventType == CtxCancelEvent
 
-		eventType := SyncEventType(event)
-		isCtxType := eventType == CtxDoneEvent || eventType == CtxCancelEvent
-
-		// skip internal synchronizations in context
-		if !isCtxType && hasSuffix(file, "src/context/context.go") {
-			file, line = "", 0
-		}
+	// skip internal synchronizations in context
+	if !isCtxType && hasSuffix(file, "src/context/context.go") {
+		file, line = "", 0
 	}
 
 	if hasSuffix(file, "asm_amd64.s") {
@@ -279,7 +267,9 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		} else {
 			_, file, line, _ = Caller(skip + 1)
 		}
-	} else if hasSuffix(file, "trapper/trap.go") {
+	}
+
+	if hasSuffix(file, "trapper/trap.go") {
 		_, file, line, _ = Caller(skip + 1)
 	}
 

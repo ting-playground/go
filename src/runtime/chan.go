@@ -807,7 +807,7 @@ func reflect_chancap(c *hchan) int {
 //go:linkname reflect_chanclose reflect.chanclose
 func reflect_chanclose(c *hchan) {
 	closechan(c)
-	MarkEvent(unsafe.Pointer(c), 0, int(ChanReflectCloseEvent), 4)
+	MarkEvent(unsafe.Pointer(c), 0, int(ChanReflectCloseEvent), 3)
 }
 
 func (q *waitq) enqueue(sgp *sudog) {
