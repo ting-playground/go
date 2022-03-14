@@ -130,8 +130,7 @@ func getGCallerInfo(gp *g, skip int) (file string, line int) {
 		frame, _ := CallersFrames(rpc).Next()
 		file, line = frame.File, frame.Line
 	}
-
-	return file, line
+	return
 }
 
 func markNewproc(gp *g, goid int64) {
@@ -260,17 +259,18 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		file, line = "", 0
 	}
 
+	if hasSuffix(file, "trapper/trap.go") {
+		_, file, line, _ = Caller(skip + 1)
+	}
+
 	if hasSuffix(file, "asm_amd64.s") {
 		// if we are in runtime.goexit
 		if line == 1581 {
-			file, line = getGCallerInfo(getg(), 1)
+			pc := getg().startpc
+			file, line = FuncForPC(pc).FileLine(pc)
 		} else {
 			_, file, line, _ = Caller(skip + 1)
 		}
-	}
-
-	if hasSuffix(file, "trapper/trap.go") {
-		_, file, line, _ = Caller(skip + 1)
 	}
 
 	if file != "" && line != 0 {
