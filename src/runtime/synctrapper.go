@@ -123,14 +123,7 @@ func hasSuffix(target, suffix string) bool {
 	return szlhs > szrhs && target[szlhs-szrhs:] == suffix
 }
 
-func markNewproc(gp *g, goid int64) {
-	if !SyncTraceEnable {
-		return
-	}
-
-	var file string
-	var line int
-
+func getGCallerInfo(gp *g, skip int) (file string, line int) {
 	rpc := make([]uintptr, 1)
 	n := gcallers(gp, 2, rpc)
 	if n >= 1 {
@@ -138,7 +131,19 @@ func markNewproc(gp *g, goid int64) {
 		file, line = frame.File, frame.Line
 	}
 
-	StTrace.append(StTraceEvent{
+	return file, line
+}
+
+func markNewproc(gp *g, goid int64) {
+	if !SyncTraceEnable {
+		return
+	}
+
+	file, line := getGCallerInfo(gp, 2)
+
+	// We don't use race API here to avoid the runtime panic
+	lock(&StTrace.mu)
+	StTrace.traces = append(StTrace.traces, StTraceEvent{
 		Goid: gp.goid,
 		Now:  nanotime(),
 		Type: int(NewProcEvent),
@@ -148,18 +153,20 @@ func markNewproc(gp *g, goid int64) {
 		Hold: goid,
 		// No need function name
 	})
+	unlock(&StTrace.mu)
 
 	return
 }
 
-func markLastDeferReturn() {
+//go:nosplit
+func markLastDeferReturn(skip int) {
 	if !SyncTraceEnable {
 		return
 	}
 
 	goid := getg().goid
 
-	pc, file, line, _ := Caller(2)
+	pc, file, line, _ := Caller(skip)
 
 	if hasSuffix(file, "asm_amd64.s") {
 		return
@@ -262,12 +269,17 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		// skip internal synchronizations in context
 		if !isCtxType && hasSuffix(file, "src/context/context.go") {
 			file, line = "", 0
-		} else if hasSuffix(file, "asm_amd64.s") {
-			_, file, line, _ = Caller(skip + 1)
 		}
 	}
 
-	if hasSuffix(file, "trapper/trap.go") {
+	if hasSuffix(file, "asm_amd64.s") {
+		// if we are in runtime.goexit
+		if line == 1581 {
+			file, line = getGCallerInfo(getg(), 1)
+		} else {
+			_, file, line, _ = Caller(skip + 1)
+		}
+	} else if hasSuffix(file, "trapper/trap.go") {
 		_, file, line, _ = Caller(skip + 1)
 	}
 
