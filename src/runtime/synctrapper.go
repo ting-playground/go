@@ -5,8 +5,21 @@ import (
 	"unsafe"
 )
 
-var SyncTraceEnable bool
+var SyncTraceEnable uint8
 
+func EnableSyncTracing() {
+	atomic.Store8(&SyncTraceEnable, 1)
+}
+
+func DisableSyncTracing() {
+	atomic.Store8(&SyncTraceEnable, 0)
+}
+
+func isSyncTraceDisabled() bool {
+	return atomic.Load8(&SyncTraceEnable) == 0
+}
+
+/*
 func syncTraceEnabled() bool {
 	s := gogetenv("SYNCTRAPPER_TRACE")
 	if s == "0" {
@@ -18,6 +31,7 @@ func syncTraceEnabled() bool {
 
 	return false
 }
+*/
 
 var StTrace = &stTrace{}
 
@@ -134,7 +148,7 @@ func getGCallerInfo(gp *g, skip int) (file string, line int) {
 }
 
 func markNewproc(gp *g, goid int64) {
-	if !SyncTraceEnable {
+	if isSyncTraceDisabled() {
 		return
 	}
 
@@ -159,7 +173,7 @@ func markNewproc(gp *g, goid int64) {
 
 //go:nosplit
 func markLastDeferReturn(skip int) {
-	if !SyncTraceEnable {
+	if isSyncTraceDisabled() {
 		return
 	}
 
@@ -182,7 +196,7 @@ func markLastDeferReturn(skip int) {
 }
 
 func markDeferEvent() {
-	if !SyncTraceEnable {
+	if isSyncTraceDisabled() {
 		return
 	}
 
@@ -205,12 +219,12 @@ func markDeferEvent() {
 }
 
 func markSelectEvent(c *hchan, event SyncEventType, order int64) {
-	if !SyncTraceEnable {
+	if isSyncTraceDisabled() {
 		return
 	}
 
 	lock(&c.lock)
-	if c.syncid < 0 {
+	if c.syncid <= 0 {
 		unlock(&c.lock)
 		return
 	}
@@ -246,12 +260,12 @@ func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 }
 
 func markChanEvent(c *hchan, event SyncEventType, skip int) {
-	if !SyncTraceEnable {
+	if isSyncTraceDisabled() {
 		return
 	}
 
 	lock(&c.lock)
-	if c.syncid < 0 {
+	if c.syncid <= 0 {
 		unlock(&c.lock)
 		return
 	}
@@ -283,7 +297,7 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 }
 
 func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
-	if !SyncTraceEnable {
+	if isSyncTraceDisabled() {
 		return
 	}
 

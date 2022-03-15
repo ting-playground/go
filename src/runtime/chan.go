@@ -60,7 +60,7 @@ type waitq struct {
 //go:linkname reflect_makechan reflect.makechan
 func reflect_makechan(t *chantype, size int, id int64) *hchan {
 	ch := makechan(t, size, id)
-	if ch.syncid >= 0 {
+	if ch.syncid > 0 {
 		defer markChanEvent(ch, ChanReflectMakeEvent, 2)
 	}
 	return ch
@@ -72,7 +72,7 @@ func makechan64(t *chantype, size int64, id int64) *hchan {
 	}
 
 	ch := makechan(t, int(size), id)
-	if ch.syncid >= 0 {
+	if ch.syncid > 0 {
 		defer markChanEvent(ch, ChanMake64Event, 2)
 	}
 	return ch
@@ -454,14 +454,14 @@ func empty(c *hchan) bool {
 // entry points for <- c from compiled code
 //go:nosplit
 func chanrecv1(c *hchan, elem unsafe.Pointer) {
-	defer markChanEvent(c, ChanRecv1Envet, 2)
 	chanrecv(c, elem, true)
+	markChanEvent(c, ChanRecv1Envet, 2)
 }
 
 //go:nosplit
 func chanrecv2(c *hchan, elem unsafe.Pointer) (received bool) {
-	defer markChanEvent(c, ChanRecv2Event, 2)
 	_, received = chanrecv(c, elem, true)
+	markChanEvent(c, ChanRecv2Event, 2)
 	return
 }
 

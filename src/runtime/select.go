@@ -253,7 +253,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 		cas = &scases[casi]
 		c = cas.c
 
-		if c.syncid < 0 {
+		if c.syncid <= 0 {
 			// We select a channel no need to wait
 			goto normal
 		}
