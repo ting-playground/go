@@ -126,7 +126,7 @@ func makechan(t *chantype, size int, id int64) *hchan {
 		print("makechan: chan=", c, "; elemsize=", elem.size, "; dataqsiz=", size, "\n")
 	}
 
-	if id >= 0 {
+	if id > 0 {
 		markChanEvent(c, ChanMakeEvent, 2)
 	}
 

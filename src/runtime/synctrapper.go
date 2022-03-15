@@ -151,7 +151,7 @@ func isNotUserSpaceGoroutine(gp *g) bool {
 	}
 
 	fn := funcname(f)
-	if hasPrefix(fn, "runtime.") || hasPrefix(fn, "sync.") || hasPrefix(fn, "net.") {
+	if hasPrefix(fn, "runtime.") {
 		return true
 	}
 
@@ -316,6 +316,10 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 	goid := gp.goid
 	_, file, line, _ := Caller(skip)
 
+	if hasSuffix(file, "trapper/trap.go") {
+		_, file, line, _ = Caller(skip + 1)
+	}
+
 	if hasSuffix(file, "asm_amd64.s") {
 		// if we are in runtime.goexit
 		if line == 1581 {
@@ -362,14 +366,11 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		file, line = "", 0
 	}
 
-	var trapped bool
 	if hasSuffix(file, "trapper/trap.go") {
 		_, file, line, _ = Caller(skip + 1)
-		trapped = true
 	}
 
 	if hasSuffix(file, "asm_amd64.s") {
-		trapped = true
 		// if we are in runtime.goexit
 		if line == 1581 {
 			pc := getg().startpc
@@ -380,7 +381,7 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 	}
 
 	// we only append synchronizations trapped by trapper/trap.go
-	if trapped && file != "" && line != 0 {
+	if file != "" && line != 0 {
 		StTrace.append(StTraceEvent{
 			Goid: goid,
 			Now:  nanotime(),
@@ -393,24 +394,29 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 }
 
 type syncTrapperMap struct {
-	enable bool
+	enable uint8
 	ch     chan SyncSignal
 }
 
 func (s *syncTrapperMap) IsEnabled() bool {
-	return s.enable
+	return atomic.Load8(&s.enable) == 1
 }
 
 func (s *syncTrapperMap) Enable() {
-	s.enable = true
+	atomic.Store8(&s.enable, 1)
 }
 
 func (s *syncTrapperMap) Disable() {
-	s.enable = false
+	atomic.Store8(&s.enable, 0)
 }
 
-func (s *syncTrapperMap) Queued(id int64, isWakedUp *uint32) {
-	s.ch <- SyncSignal{ID: id, IsWakedUp: isWakedUp}
+func (s *syncTrapperMap) send(id int64, isWakedUp *uint32) bool {
+	if atomic.Load8(&s.enable) == 1 {
+		s.ch <- SyncSignal{ID: id, IsWakedUp: isWakedUp}
+		return true
+	}
+
+	return false
 }
 
 func (s *syncTrapperMap) Notify() chan SyncSignal {
@@ -431,13 +437,14 @@ func waitSched(c *hchan) {
 	id := c.syncid
 	unlock(&c.lock)
 
-	if id < 0 {
+	if id <= 0 {
 		return
 	}
 
 	isWakeUp := new(uint32)
-	SyncTrapperMap.Queued(id, isWakeUp)
-	for atomic.Load(isWakeUp) != 1 {
-		timeSleep(1000000)
+	if SyncTrapperMap.send(id, isWakeUp) {
+		for atomic.Load(isWakeUp) != 1 {
+			timeSleep(1000000)
+		}
 	}
 }

@@ -4361,9 +4361,12 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	if isSystemGoroutine(newg, false) {
 		atomic.Xadd(&sched.ngsys, +1)
 	}
-	if isNotUserSpaceGoroutine(newg) {
-		newg.isNotUserSpaceG = true
-	}
+	/*
+		if isNotUserSpaceGoroutine(newg) {
+			newg.isNotUserSpaceG = true
+		}
+	*/
+
 	// Track initial transition?
 	newg.trackingSeq = uint8(fastrand())
 	if newg.trackingSeq%gTrackingPeriod == 0 {
