@@ -35,7 +35,6 @@ func main() {
 			}
 		}
 	}
-	runtime.SyncTrapperMap.Clear()
 
 	runtime.ReadMemStats(memstats)
 	obj := int64(memstats.HeapObjects - st.HeapObjects)
