@@ -48,6 +48,8 @@ type hchan struct {
 	// (in particular, do not ready a G), as this can deadlock
 	// with stack shrinking.
 	lock mutex
+
+	syncid int64
 }
 
 type waitq struct {
@@ -58,7 +60,9 @@ type waitq struct {
 //go:linkname reflect_makechan reflect.makechan
 func reflect_makechan(t *chantype, size int, id int64) *hchan {
 	ch := makechan(t, size, id)
-	defer MarkEvent(unsafe.Pointer(ch), 0, int(ChanReflectMakeEvent), 2)
+	if ch.syncid >= 0 {
+		defer markChanEvent(ch, ChanReflectMakeEvent, 2)
+	}
 	return ch
 }
 
@@ -68,7 +72,9 @@ func makechan64(t *chantype, size int64, id int64) *hchan {
 	}
 
 	ch := makechan(t, int(size), id)
-	defer MarkEvent(unsafe.Pointer(ch), 0, int(ChanMake64Event), 2)
+	if ch.syncid >= 0 {
+		defer markChanEvent(ch, ChanMake64Event, 2)
+	}
 	return ch
 }
 
@@ -97,28 +103,20 @@ func makechan(t *chantype, size int, id int64) *hchan {
 	case mem == 0:
 		// Queue or element size is zero.
 		c = (*hchan)(mallocgc(hchanSize, nil, true))
-		if SyncTrapperMap.IsEnabled() && id >= 0 {
-			SyncTrapperMap.Store(c, id)
-		}
 		// Race detector uses this location for synchronization.
 		c.buf = c.raceaddr()
 	case elem.ptrdata == 0:
 		// Elements do not contain pointers.
 		// Allocate hchan and buf in one call.
 		c = (*hchan)(mallocgc(hchanSize+mem, nil, true))
-		if SyncTrapperMap.IsEnabled() && id >= 0 {
-			SyncTrapperMap.Store(c, id)
-		}
 		c.buf = add(unsafe.Pointer(c), hchanSize)
 	default:
 		// Elements contain pointers.
 		c = new(hchan)
 		c.buf = mallocgc(mem, elem, true)
-		if SyncTrapperMap.IsEnabled() && id >= 0 {
-			SyncTrapperMap.Store(c, id)
-		}
 	}
 
+	c.syncid = id
 	c.elemsize = uint16(elem.size)
 	c.elemtype = elem
 	c.dataqsiz = uint(size)
@@ -128,7 +126,10 @@ func makechan(t *chantype, size int, id int64) *hchan {
 		print("makechan: chan=", c, "; elemsize=", elem.size, "; dataqsiz=", size, "\n")
 	}
 
-	MarkEvent(unsafe.Pointer(c), 0, int(ChanMakeEvent), 2)
+	if id >= 0 {
+		markChanEvent(c, ChanMakeEvent, 2)
+	}
+
 	return c
 }
 
@@ -156,7 +157,7 @@ func full(c *hchan) bool {
 //go:nosplit
 func chansend1(c *hchan, elem unsafe.Pointer) {
 	chansend(c, elem, true, getcallerpc())
-	MarkEvent(unsafe.Pointer(c), 0, int(ChanSend1Event), 2)
+	markChanEvent(c, ChanSend1Event, 2)
 }
 
 /*
@@ -369,7 +370,7 @@ func recvDirect(t *_type, sg *sudog, dst unsafe.Pointer) {
 }
 
 func closechan(c *hchan) {
-	defer MarkEvent(unsafe.Pointer(c), 0, int(ChanCloseEvent), 2)
+	defer markChanEvent(c, ChanCloseEvent, 2)
 	if c == nil {
 		panic(plainError("close of nil channel"))
 	}
@@ -453,13 +454,13 @@ func empty(c *hchan) bool {
 // entry points for <- c from compiled code
 //go:nosplit
 func chanrecv1(c *hchan, elem unsafe.Pointer) {
-	defer MarkEvent(unsafe.Pointer(c), 0, int(ChanRecv1Envet), 2)
+	defer markChanEvent(c, ChanRecv1Envet, 2)
 	chanrecv(c, elem, true)
 }
 
 //go:nosplit
 func chanrecv2(c *hchan, elem unsafe.Pointer) (received bool) {
-	defer MarkEvent(unsafe.Pointer(c), 0, int(ChanRecv2Event), 2)
+	defer markChanEvent(c, ChanRecv2Event, 2)
 	_, received = chanrecv(c, elem, true)
 	return
 }
@@ -709,9 +710,9 @@ func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 		selected = chansend(c, elem, false, getcallerpc())
 	}
 	if selected {
-		markSelectEvent(unsafe.Pointer(c), 0, SelectNbSendEvent, 0)
+		markSelectEvent(c, SelectNbSendEvent, 0)
 	} else {
-		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, -1)
+		markSelectEvent(c, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -734,48 +735,45 @@ func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 //	}
 //
 func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
-	defer MarkEvent(unsafe.Pointer(c), 0, int(SelectNbRecvEvent), 2)
 	selected, received = chanrecv(c, elem, false)
 	if !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
 		waitSched(c)
 		selected, received = chanrecv(c, elem, false)
 	}
 	if selected {
-		markSelectEvent(unsafe.Pointer(c), 0, SelectNbRecvEvent, 0)
+		markSelectEvent(c, SelectNbRecvEvent, 0)
 	} else {
-		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, -1)
+		markSelectEvent(c, SelectDefaultEvent, -1)
 	}
 	return
 }
 
 //go:linkname reflect_chansend reflect.chansend
 func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
-	defer MarkEvent(unsafe.Pointer(c), 0, int(ChanReflectSendEvent), 2)
 	selected = chansend(c, elem, !nb, getcallerpc())
 	if nb && !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
 		waitSched(c)
 		selected = chansend(c, elem, !nb, getcallerpc())
 	}
 	if selected {
-		markSelectEvent(unsafe.Pointer(c), 0, ChanReflectSendEvent, 0)
+		markSelectEvent(c, ChanReflectSendEvent, 0)
 	} else {
-		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, -1)
+		markSelectEvent(c, SelectDefaultEvent, -1)
 	}
 	return
 }
 
 //go:linkname reflect_chanrecv reflect.chanrecv
 func reflect_chanrecv(c *hchan, nb bool, elem unsafe.Pointer) (selected bool, received bool) {
-	defer MarkEvent(unsafe.Pointer(c), 0, int(ChanReflectRecvEvent), 2)
 	selected, received = chanrecv(c, elem, !nb)
 	if nb && !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
 		waitSched(c)
 		selected, received = chanrecv(c, elem, !nb)
 	}
 	if selected {
-		markSelectEvent(unsafe.Pointer(c), 0, ChanReflectRecvEvent, 0)
+		markSelectEvent(c, ChanReflectRecvEvent, 0)
 	} else {
-		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, -1)
+		markSelectEvent(c, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -807,7 +805,7 @@ func reflect_chancap(c *hchan) int {
 //go:linkname reflect_chanclose reflect.chanclose
 func reflect_chanclose(c *hchan) {
 	closechan(c)
-	MarkEvent(unsafe.Pointer(c), 0, int(ChanReflectCloseEvent), 3)
+	markChanEvent(c, ChanReflectCloseEvent, 3)
 }
 
 func (q *waitq) enqueue(sgp *sudog) {

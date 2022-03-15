@@ -557,7 +557,7 @@ func deferreturn() {
 	gp := getg()
 	d := gp._defer
 	if d == nil {
-		markLastDeferReturn(2)
+		markLastDeferReturn(1)
 		return
 	}
 	sp := getcallersp()

@@ -249,15 +249,20 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 
 	if SyncTrapperMap.IsEnabled() {
 		casj := int(fastrandn(uint32(norder)))
+		casi = int(pollorder[casj])
+		cas = &scases[casi]
+		c = cas.c
+
+		if c.syncid < 0 {
+			// We select a channel no need to wait
+			goto normal
+		}
 
 		if block && fastrandn(uint32(ncases)) == 0 {
 			// Try goto the default branch
 			goto normal
 		}
 
-		casi = int(pollorder[casj])
-		cas = &scases[casi]
-		c = cas.c
 		if casi >= nsends {
 			sg = c.sendq.dequeue()
 			if sg != nil {
@@ -354,7 +359,7 @@ normal:
 	if !block {
 		selunlock(scases, lockorder)
 		casi = -1
-		markSelectEvent(unsafe.Pointer(c), 0, SelectDefaultEvent, int64(casi))
+		markSelectEvent(c, SelectDefaultEvent, int64(casi))
 		goto retc
 	}
 
@@ -480,7 +485,7 @@ normal:
 	}
 
 	selunlock(scases, lockorder)
-	markSelectEvent(unsafe.Pointer(c), 0, SelectWakeUpEvent, int64(casi))
+	markSelectEvent(c, SelectWakeUpEvent, int64(casi))
 	goto retc
 
 bufrecv:
@@ -506,7 +511,7 @@ bufrecv:
 	}
 	c.qcount--
 	selunlock(scases, lockorder)
-	markSelectEvent(unsafe.Pointer(c), 0, SelectBufRecvEvent, int64(casi))
+	markSelectEvent(c, SelectBufRecvEvent, int64(casi))
 	goto retc
 
 bufsend:
@@ -525,7 +530,7 @@ bufsend:
 	}
 	c.qcount++
 	selunlock(scases, lockorder)
-	markSelectEvent(unsafe.Pointer(c), 0, SelectBufSendEvent, int64(casi))
+	markSelectEvent(c, SelectBufSendEvent, int64(casi))
 	goto retc
 
 recv:
@@ -535,7 +540,7 @@ recv:
 		print("syncrecv: cas0=", cas0, " c=", c, "\n")
 	}
 	recvOK = true
-	markSelectEvent(unsafe.Pointer(c), 0, SelectRecvEvent, int64(casi))
+	markSelectEvent(c, SelectRecvEvent, int64(casi))
 	goto retc
 
 rclose:
@@ -548,7 +553,7 @@ rclose:
 	if raceenabled {
 		raceacquire(c.raceaddr())
 	}
-	markSelectEvent(unsafe.Pointer(c), 0, SelectCloseRecvEvent, int64(casi))
+	markSelectEvent(c, SelectCloseRecvEvent, int64(casi))
 	goto retc
 
 send:
@@ -563,7 +568,7 @@ send:
 	if debugSelect {
 		print("syncsend: cas0=", cas0, " c=", c, "\n")
 	}
-	markSelectEvent(unsafe.Pointer(c), 0, SelectSendEvent, int64(casi))
+	markSelectEvent(c, SelectSendEvent, int64(casi))
 	goto retc
 
 retc:

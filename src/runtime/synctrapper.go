@@ -204,14 +204,19 @@ func markDeferEvent() {
 	})
 }
 
-func markSelectEvent(addr unsafe.Pointer, goid int64, event SyncEventType, order int64) {
+func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 	if !SyncTraceEnable {
 		return
 	}
 
-	if goid == 0 {
-		goid = getg().goid
+	lock(&c.lock)
+	if c.syncid < 0 {
+		unlock(&c.lock)
+		return
 	}
+	unlock(&c.lock)
+
+	goid := getg().goid
 
 	var file string
 	var line int
@@ -232,10 +237,47 @@ func markSelectEvent(addr unsafe.Pointer, goid int64, event SyncEventType, order
 			Goid: goid,
 			Now:  nanotime(),
 			Type: int(event),
-			Addr: addr,
+			Addr: unsafe.Pointer(c),
 			File: file,
 			Line: line,
 			Hold: order,
+		})
+	}
+}
+
+func markChanEvent(c *hchan, event SyncEventType, skip int) {
+	if !SyncTraceEnable {
+		return
+	}
+
+	lock(&c.lock)
+	if c.syncid < 0 {
+		unlock(&c.lock)
+		return
+	}
+	unlock(&c.lock)
+
+	goid := getg().goid
+	_, file, line, _ := Caller(skip)
+
+	if hasSuffix(file, "asm_amd64.s") {
+		// if we are in runtime.goexit
+		if line == 1581 {
+			pc := getg().startpc
+			file, line = FuncForPC(pc).FileLine(pc)
+		} else {
+			_, file, line, _ = Caller(skip + 1)
+		}
+	}
+
+	if file != "" && line != 0 {
+		StTrace.append(StTraceEvent{
+			Goid: goid,
+			Now:  nanotime(),
+			Type: int(event),
+			Addr: unsafe.Pointer(c),
+			File: file,
+			Line: line,
 		})
 	}
 }
@@ -259,11 +301,14 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		file, line = "", 0
 	}
 
+	var trapped bool
 	if hasSuffix(file, "trapper/trap.go") {
 		_, file, line, _ = Caller(skip + 1)
+		trapped = true
 	}
 
 	if hasSuffix(file, "asm_amd64.s") {
+		trapped = true
 		// if we are in runtime.goexit
 		if line == 1581 {
 			pc := getg().startpc
@@ -273,7 +318,8 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		}
 	}
 
-	if file != "" && line != 0 {
+	// we only append synchronizations trapped by trapper/trap.go
+	if trapped && file != "" && line != 0 {
 		StTrace.append(StTraceEvent{
 			Goid: goid,
 			Now:  nanotime(),
@@ -286,41 +332,8 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 }
 
 type syncTrapperMap struct {
-	lock mutex
-	data map[*hchan]int64
-
 	enable bool
 	ch     chan SyncSignal
-}
-
-func (s *syncTrapperMap) Lock() {
-	lock(&s.lock)
-	if raceenabled {
-		raceacquire(unsafe.Pointer(&s.lock))
-	}
-}
-
-func (s *syncTrapperMap) Unlock() {
-	if raceenabled {
-		racerelease(unsafe.Pointer(&s.lock))
-	}
-	unlock(&s.lock)
-}
-
-func (s *syncTrapperMap) Store(c *hchan, id int64) {
-	s.Lock()
-	s.data[c] = id
-	s.Unlock()
-}
-
-func (s *syncTrapperMap) Load(c *hchan) int64 {
-	s.Lock()
-	id, exists := s.data[c]
-	s.Unlock()
-	if exists {
-		return id
-	}
-	return -1
 }
 
 func (s *syncTrapperMap) IsEnabled() bool {
@@ -333,12 +346,6 @@ func (s *syncTrapperMap) Enable() {
 
 func (s *syncTrapperMap) Disable() {
 	s.enable = false
-}
-
-func (s *syncTrapperMap) Clear() {
-	s.Lock()
-	s.data = make(map[*hchan]int64)
-	s.Unlock()
 }
 
 func (s *syncTrapperMap) Queued(id int64, isWakedUp *uint32) {
@@ -355,13 +362,15 @@ type SyncSignal struct {
 }
 
 var SyncTrapperMap *syncTrapperMap = &syncTrapperMap{
-	data: make(map[*hchan]int64),
-	ch:   make(chan SyncSignal),
+	ch: make(chan SyncSignal),
 }
 
 func waitSched(c *hchan) {
-	id := SyncTrapperMap.Load(c)
-	if id == -1 {
+	lock(&c.lock)
+	id := c.syncid
+	unlock(&c.lock)
+
+	if id < 0 {
 		return
 	}
 
