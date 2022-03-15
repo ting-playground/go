@@ -137,6 +137,28 @@ func hasSuffix(target, suffix string) bool {
 	return szlhs > szrhs && target[szlhs-szrhs:] == suffix
 }
 
+func isNotUserSpaceGoroutine(gp *g) bool {
+	// Keep this in sync with cmd/trace/trace.go:isSystemGoroutine.
+	f := findfunc(gp.startpc)
+	if !f.valid() {
+		return false
+	}
+	if f.funcID == funcID_runtime_main || f.funcID == funcID_handleAsyncEvent {
+		return false
+	}
+	if f.funcID == funcID_runfinq {
+		return !fingRunning
+	}
+
+	fn := funcname(f)
+	if hasPrefix(fn, "runtime.") || hasPrefix(fn, "sync.") || hasPrefix(fn, "net.") {
+		return true
+	}
+
+	pkgpath := funcpkgpath(f)
+	return hasPrefix(pkgpath, "github.com/ting-playground")
+}
+
 func getGCallerInfo(gp *g, skip int) (file string, line int) {
 	rpc := make([]uintptr, 1)
 	n := gcallers(gp, 2, rpc)
@@ -147,7 +169,7 @@ func getGCallerInfo(gp *g, skip int) (file string, line int) {
 	return
 }
 
-func markNewproc(gp *g, goid int64) {
+func markNewproc(gp *g, newg *g) {
 	if isSyncTraceDisabled() {
 		return
 	}
@@ -163,7 +185,7 @@ func markNewproc(gp *g, goid int64) {
 		Addr: unsafe.Pointer(gp),
 		File: file,
 		Line: line,
-		Hold: goid,
+		Hold: newg.goid,
 		// No need function name
 	})
 	unlock(&StTrace.mu)
@@ -177,7 +199,12 @@ func markLastDeferReturn(skip int) {
 		return
 	}
 
-	goid := getg().goid
+	gp := getg()
+	if gp.isNotUserSpaceG {
+		return
+	}
+
+	goid := gp.goid
 
 	pc, file, line, _ := Caller(skip)
 
@@ -200,7 +227,12 @@ func markDeferEvent() {
 		return
 	}
 
-	goid := getg().goid
+	gp := getg()
+	if gp.isNotUserSpaceG {
+		return
+	}
+
+	goid := gp.goid
 
 	pc, file, line, _ := Caller(2)
 
@@ -223,6 +255,11 @@ func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 		return
 	}
 
+	gp := getg()
+	if gp.isNotUserSpaceG {
+		return
+	}
+
 	lock(&c.lock)
 	if c.syncid <= 0 {
 		unlock(&c.lock)
@@ -230,7 +267,7 @@ func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 	}
 	unlock(&c.lock)
 
-	goid := getg().goid
+	goid := gp.goid
 
 	var file string
 	var line int
@@ -264,6 +301,11 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 		return
 	}
 
+	gp := getg()
+	if gp.isNotUserSpaceG {
+		return
+	}
+
 	lock(&c.lock)
 	if c.syncid <= 0 {
 		unlock(&c.lock)
@@ -271,7 +313,7 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 	}
 	unlock(&c.lock)
 
-	goid := getg().goid
+	goid := gp.goid
 	_, file, line, _ := Caller(skip)
 
 	if hasSuffix(file, "asm_amd64.s") {
@@ -301,8 +343,13 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		return
 	}
 
+	gp := getg()
+	if gp.isNotUserSpaceG {
+		return
+	}
+
 	if goid == 0 {
-		goid = getg().goid
+		goid = gp.goid
 	}
 
 	_, file, line, _ := Caller(skip)

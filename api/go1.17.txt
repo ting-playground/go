@@ -277,7 +277,6 @@ pkg runtime, type StTraceEvent struct, Type int
 pkg runtime, type StTraceEvent struct, Hold int64
 pkg runtime, var StTrace *stTrace
 pkg runtime, func MarkEvent(unsafe.Pointer, int64, int, int)
-pkg runtime, var SyncTraceEnable bool
 pkg runtime, method (StTraceEvent) IsType(SyncEventType) bool
 pkg runtime, type StTraceEvent struct, File string
 pkg runtime, type StTraceEvent struct, Line int
@@ -291,3 +290,7 @@ pkg testing, method (T) RemoveSuspect(string)
 pkg testing, method (T) SetMaxRetry(int32)
 pkg testing, func InitWhiteList([]string)
 pkg testing, var WhiteList *whitelist
+pkg runtime, func DisableSyncTracing()
+pkg runtime, func EnableSyncTracing()
+pkg runtime, var SyncTraceEnable bool
+pkg runtime, var SyncTraceEnable uint8

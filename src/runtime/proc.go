@@ -4255,7 +4255,7 @@ func newproc(siz int32, fn *funcval) {
 
 	systemstack(func() {
 		newg := newproc1(fn, argp, siz, gp, pc)
-		markNewproc(gp, newg.goid)
+		markNewproc(gp, newg)
 
 		_p_ := getg().m.p.ptr()
 		runqput(_p_, newg, true)
@@ -4360,6 +4360,9 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	}
 	if isSystemGoroutine(newg, false) {
 		atomic.Xadd(&sched.ngsys, +1)
+	}
+	if isNotUserSpaceGoroutine(newg) {
+		newg.isNotUserSpaceG = true
 	}
 	// Track initial transition?
 	newg.trackingSeq = uint8(fastrand())
