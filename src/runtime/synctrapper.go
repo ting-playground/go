@@ -19,20 +19,6 @@ func isSyncTraceDisabled() bool {
 	return atomic.Load8(&SyncTraceEnable) == 0
 }
 
-/*
-func syncTraceEnabled() bool {
-	s := gogetenv("SYNCTRAPPER_TRACE")
-	if s == "0" {
-		return false
-	}
-	if s == "1" {
-		return true
-	}
-
-	return false
-}
-*/
-
 var StTrace = &stTrace{}
 
 type SyncEventType int
@@ -79,20 +65,17 @@ const (
 type StTraceEvent struct {
 	Goid int64
 	Now  int64
-	Type int
+	Type SyncEventType
 	Addr unsafe.Pointer
 	File string
 	Line int
 	Hold int64
 }
 
-func (s StTraceEvent) IsType(t SyncEventType) bool {
-	return s.Type == int(t)
-}
-
 type stTrace struct {
-	mu     mutex
-	traces []StTraceEvent
+	mu       mutex
+	traces   []StTraceEvent
+	untracks map[unsafe.Pointer]bool
 }
 
 func (s *stTrace) lock() {
@@ -155,8 +138,20 @@ func isNotUserSpaceGoroutine(gp *g) bool {
 		return true
 	}
 
+	if hasPrefix(fn, "sync.") || hasPrefix(fn, "testing.") {
+		return true
+	}
+
+	if hasPrefix(fn, "net.") || hasPrefix(fn, "tls.") || hasPrefix(fn, "time.") {
+		return true
+	}
+
 	pkgpath := funcpkgpath(f)
-	return hasPrefix(pkgpath, "github.com/ting-playground")
+	if hasPrefix(pkgpath, "github.com/ting-playground") {
+		return true
+	}
+
+	return hasPrefix(pkgpath, "go/") || hasPrefix(pkgpath, "golang.org")
 }
 
 func getGCallerInfo(gp *g, skip int) (file string, line int) {
@@ -181,7 +176,7 @@ func markNewproc(gp *g, newg *g) {
 	StTrace.traces = append(StTrace.traces, StTraceEvent{
 		Goid: gp.goid,
 		Now:  nanotime(),
-		Type: int(NewProcEvent),
+		Type: NewProcEvent,
 		Addr: unsafe.Pointer(gp),
 		File: file,
 		Line: line,
@@ -215,7 +210,7 @@ func markLastDeferReturn(skip int) {
 	StTrace.append(StTraceEvent{
 		Goid: goid,
 		Now:  nanotime(),
-		Type: int(DeferReturnEvent),
+		Type: DeferReturnEvent,
 		File: file,
 		Line: line,
 		Addr: unsafe.Pointer(FuncForPC(pc)),
@@ -243,7 +238,7 @@ func markDeferEvent() {
 	StTrace.append(StTraceEvent{
 		Goid: goid,
 		Now:  nanotime(),
-		Type: int(DeferEvent),
+		Type: DeferEvent,
 		File: file,
 		Line: line,
 		Addr: unsafe.Pointer(FuncForPC(pc)),
@@ -289,7 +284,7 @@ func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 		StTrace.append(StTraceEvent{
 			Goid: goid,
 			Now:  nanotime(),
-			Type: int(event),
+			Type: event,
 			Addr: unsafe.Pointer(c),
 			File: file,
 			Line: line,
@@ -338,7 +333,7 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 		StTrace.append(StTraceEvent{
 			Goid: goid,
 			Now:  nanotime(),
-			Type: int(event),
+			Type: event,
 			Addr: unsafe.Pointer(c),
 			File: file,
 			Line: line,
@@ -346,7 +341,41 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 	}
 }
 
-func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
+func findCallTrap(skip int) (file string, line int) {
+	rpc := make([]uintptr, 1)
+	n := callers(skip+1, rpc[:])
+	if n < 1 {
+		return
+	}
+	frames := CallersFrames(rpc)
+	for i := 0; i < 2; i++ {
+		frame, more := frames.Next()
+
+		file, line = frame.File, frame.Line
+		if hasSuffix(file, "trapper/trap.go") {
+			frame, _ = frames.Next()
+			return frame.File, frame.Line
+		}
+
+		if hasSuffix(file, "asm_amd64.s") {
+			// if we are in runtime.goexit
+			if line == 1581 {
+				pc := getg().startpc
+				return FuncForPC(pc).FileLine(pc)
+			}
+
+			frame, _ = frames.Next()
+			return frame.File, frame.Line
+		}
+
+		if !more {
+			break
+		}
+	}
+	return
+}
+
+func MarkEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
 	if isSyncTraceDisabled() {
 		return
 	}
@@ -356,33 +385,8 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 		return
 	}
 
-	if goid == 0 {
-		goid = gp.goid
-	}
-
-	_, file, line, _ := Caller(skip)
-
-	eventType := SyncEventType(event)
-	isCtxType := eventType == CtxDoneEvent || eventType == CtxCancelEvent
-
-	// skip internal synchronizations in context
-	if !isCtxType && hasSuffix(file, "src/context/context.go") {
-		file, line = "", 0
-	}
-
-	if hasSuffix(file, "trapper/trap.go") {
-		_, file, line, _ = Caller(skip + 1)
-	}
-
-	if hasSuffix(file, "asm_amd64.s") {
-		// if we are in runtime.goexit
-		if line == 1581 {
-			pc := getg().startpc
-			file, line = FuncForPC(pc).FileLine(pc)
-		} else {
-			_, file, line, _ = Caller(skip + 1)
-		}
-	}
+	goid := gp.goid
+	file, line := findCallTrap(skip)
 
 	// we only append synchronizations trapped by trapper/trap.go
 	if file != "" && line != 0 {
@@ -394,7 +398,10 @@ func MarkEvent(addr unsafe.Pointer, goid int64, event int, skip int) {
 			File: file,
 			Line: line,
 		})
+		return
 	}
+
+	return
 }
 
 type syncTrapperMap struct {

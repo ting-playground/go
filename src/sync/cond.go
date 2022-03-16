@@ -56,7 +56,7 @@ func (c *Cond) Wait() {
 	c.L.Unlock()
 	runtime_notifyListWait(&c.notify, t)
 	c.L.Lock()
-	runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondWaitEvent), 2)
+	runtime.MarkEvent(unsafe.Pointer(c), runtime.CondWaitEvent, 2)
 }
 
 // Signal wakes one goroutine waiting on c, if there is any.
@@ -66,7 +66,7 @@ func (c *Cond) Wait() {
 func (c *Cond) Signal() {
 	c.checker.check()
 	runtime_notifyListNotifyOne(&c.notify)
-	runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondSignalEvent), 2)
+	runtime.MarkEvent(unsafe.Pointer(c), runtime.CondSignalEvent, 2)
 }
 
 // Broadcast wakes all goroutines waiting on c.
@@ -76,7 +76,7 @@ func (c *Cond) Signal() {
 func (c *Cond) Broadcast() {
 	c.checker.check()
 	runtime_notifyListNotifyAll(&c.notify)
-	runtime.MarkEvent(unsafe.Pointer(c), 0, int(runtime.CondBroadcastEvent), 2)
+	runtime.MarkEvent(unsafe.Pointer(c), runtime.CondBroadcastEvent, 2)
 }
 
 // copyChecker holds back pointer to itself to detect object copying.
