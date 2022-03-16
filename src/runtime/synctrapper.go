@@ -260,12 +260,14 @@ func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 		return
 	}
 
-	lock(&c.lock)
-	if c.syncid <= 0 {
+	if c != nil {
+		lock(&c.lock)
+		if c.syncid <= 0 {
+			unlock(&c.lock)
+			return
+		}
 		unlock(&c.lock)
-		return
 	}
-	unlock(&c.lock)
 
 	goid := gp.goid
 
@@ -306,12 +308,14 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 		return
 	}
 
-	lock(&c.lock)
-	if c.syncid <= 0 {
+	if c != nil {
+		lock(&c.lock)
+		if c.syncid <= 0 {
+			unlock(&c.lock)
+			return
+		}
 		unlock(&c.lock)
-		return
 	}
-	unlock(&c.lock)
 
 	goid := gp.goid
 	_, file, line, _ := Caller(skip)
@@ -433,6 +437,10 @@ var SyncTrapperMap *syncTrapperMap = &syncTrapperMap{
 }
 
 func waitSched(c *hchan) {
+	if c == nil {
+		return
+	}
+
 	lock(&c.lock)
 	id := c.syncid
 	unlock(&c.lock)
