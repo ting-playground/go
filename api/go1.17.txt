@@ -289,6 +289,7 @@ pkg testing, func InitWhiteList([]string)
 pkg testing, var WhiteList *whitelist
 pkg runtime, func DisableSyncTracing()
 pkg runtime, func EnableSyncTracing()
+pkg runtime, func AllocShallowMemory()
 pkg runtime, var SyncTraceEnable uint8
 pkg runtime, func MarkEvent(unsafe.Pointer, SyncEventType, int)
 pkg runtime, type StTraceEvent struct, Type SyncEventType

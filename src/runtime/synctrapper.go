@@ -6,6 +6,13 @@ import (
 )
 
 var SyncTraceEnable uint8
+var untracks []uint32
+var isShallowMemoryEnabled uint8
+
+func AllocShallowMemory() {
+	untracks = make([]uint32, 1<<32-1)
+	atomic.Store8(&isShallowMemoryEnabled, 1)
+}
 
 func EnableSyncTracing() {
 	atomic.Store8(&SyncTraceEnable, 1)
@@ -73,9 +80,22 @@ type StTraceEvent struct {
 }
 
 type stTrace struct {
-	mu       mutex
-	traces   []StTraceEvent
-	untracks map[unsafe.Pointer]bool
+	mu     mutex
+	traces []StTraceEvent
+}
+
+func gethash(gp uintptr, t SyncEventType) uint32 {
+	list := []byte{uint8(t)}
+	list = append(list, byte(gp>>56), byte(gp>>48), byte(gp>>40), byte(gp>>32))
+	list = append(list, byte(gp>>24), byte(gp>>16), byte(gp>>8), byte(gp))
+	return fnv1(0, list...)
+}
+
+func fnv1(x uint32, list ...byte) uint32 {
+	for _, b := range list {
+		x = x*16777619 ^ uint32(b)
+	}
+	return x
 }
 
 func (s *stTrace) lock() {
@@ -137,21 +157,24 @@ func isNotUserSpaceGoroutine(gp *g) bool {
 	if hasPrefix(fn, "runtime.") {
 		return true
 	}
+	/*
+		if hasPrefix(fn, "sync.") {
+			return true
+		}
 
-	if hasPrefix(fn, "sync.") || hasPrefix(fn, "testing.") {
-		return true
-	}
-
-	if hasPrefix(fn, "net.") || hasPrefix(fn, "tls.") || hasPrefix(fn, "time.") {
-		return true
-	}
+		if hasPrefix(fn, "net.") || hasPrefix(fn, "tls.") || hasPrefix(fn, "time.") {
+			return true
+		}
+	*/
 
 	pkgpath := funcpkgpath(f)
 	if hasPrefix(pkgpath, "github.com/ting-playground") {
 		return true
 	}
 
-	return hasPrefix(pkgpath, "go/") || hasPrefix(pkgpath, "golang.org")
+	return false
+
+	// return hasPrefix(pkgpath, "go/") || hasPrefix(pkgpath, "golang.org")
 }
 
 func getGCallerInfo(gp *g, skip int) (file string, line int) {
@@ -166,6 +189,10 @@ func getGCallerInfo(gp *g, skip int) (file string, line int) {
 
 func markNewproc(gp *g, newg *g) {
 	if isSyncTraceDisabled() {
+		return
+	}
+
+	if tooFrequency(gp, NewProcEvent) {
 		return
 	}
 
@@ -199,6 +226,10 @@ func markLastDeferReturn(skip int) {
 		return
 	}
 
+	if tooFrequency(gp, DeferReturnEvent) {
+		return
+	}
+
 	goid := gp.goid
 
 	pc, file, line, _ := Caller(skip)
@@ -224,6 +255,10 @@ func markDeferEvent() {
 
 	gp := getg()
 	if gp.isNotUserSpaceG {
+		return
+	}
+
+	if tooFrequency(gp, DeferEvent) {
 		return
 	}
 
@@ -262,6 +297,10 @@ func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 			return
 		}
 		unlock(&c.lock)
+	}
+
+	if tooFrequency(gp, event) {
+		return
 	}
 
 	goid := gp.goid
@@ -312,6 +351,10 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 		unlock(&c.lock)
 	}
 
+	if tooFrequency(gp, event) {
+		return
+	}
+
 	goid := gp.goid
 	_, file, line, _ := Caller(skip)
 
@@ -342,13 +385,15 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 }
 
 func findCallTrap(skip int) (file string, line int) {
-	rpc := make([]uintptr, 1)
-	n := callers(skip+1, rpc[:])
+	pc := make([]uintptr, 10)
+	n := Callers(skip, pc)
 	if n < 1 {
 		return
 	}
-	frames := CallersFrames(rpc)
-	for i := 0; i < 2; i++ {
+
+	pc = pc[:n]
+	frames := CallersFrames(pc)
+	for i := 0; i < 5; i++ {
 		frame, more := frames.Next()
 
 		file, line = frame.File, frame.Line
@@ -385,6 +430,10 @@ func MarkEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
 		return
 	}
 
+	if tooFrequency(gp, event) {
+		return
+	}
+
 	goid := gp.goid
 	file, line := findCallTrap(skip)
 
@@ -402,6 +451,20 @@ func MarkEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
 	}
 
 	return
+}
+
+func tooFrequency(gp *g, t SyncEventType) bool {
+	if atomic.Load8(&isShallowMemoryEnabled) == 0 {
+		return false
+	}
+
+	hash := gethash(uintptr(unsafe.Pointer(gp)), t)
+	k := atomic.Load(&untracks[hash])
+	if k > 256 {
+		return true
+	}
+	atomic.Store(&untracks[hash], uint32(k+1))
+	return false
 }
 
 type syncTrapperMap struct {
