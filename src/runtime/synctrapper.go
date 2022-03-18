@@ -393,7 +393,7 @@ func findCallTrap(skip int) (file string, line int) {
 
 	pc = pc[:n]
 	frames := CallersFrames(pc)
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 3; i++ {
 		frame, more := frames.Next()
 
 		file, line = frame.File, frame.Line

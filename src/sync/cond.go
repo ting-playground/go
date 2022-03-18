@@ -52,11 +52,11 @@ func NewCond(l Locker) *Cond {
 //
 func (c *Cond) Wait() {
 	c.checker.check()
+	runtime.MarkEvent(unsafe.Pointer(c), runtime.CondWaitEvent, 2)
 	t := runtime_notifyListAdd(&c.notify)
 	c.L.Unlock()
 	runtime_notifyListWait(&c.notify, t)
 	c.L.Lock()
-	runtime.MarkEvent(unsafe.Pointer(c), runtime.CondWaitEvent, 2)
 }
 
 // Signal wakes one goroutine waiting on c, if there is any.
