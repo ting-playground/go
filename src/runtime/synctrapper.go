@@ -522,7 +522,7 @@ func waitSched(c *hchan) {
 	isWakeUp := new(uint32)
 	if SyncTrapperMap.send(id, isWakeUp) {
 		for atomic.Load(isWakeUp) != 1 {
-			timeSleep(1000000)
+			Gosched()
 		}
 	}
 }
