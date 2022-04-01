@@ -526,3 +526,39 @@ func waitSched(c *hchan) {
 		}
 	}
 }
+
+type fastRandSource struct {
+	lock     mutex
+	fastrand [2]uint32
+}
+
+var globalFRS *fastRandSource = &fastRandSource{
+	fastrand: [2]uint32{0, 1},
+}
+
+func FastRandSeed(lhs, rhs uint64, seed uintptr) {
+	lock(&globalFRS.lock)
+	globalFRS.fastrand[0] = uint32(int64Hash(lhs, seed))
+	globalFRS.fastrand[1] = uint32(int64Hash(rhs, ^seed))
+	if globalFRS.fastrand[0]|globalFRS.fastrand[1] == 0 {
+		globalFRS.fastrand[1] = 1
+	}
+	unlock(&globalFRS.lock)
+}
+
+func FastRand() uint32 {
+	lock(&globalFRS.lock)
+	s1, s0 := globalFRS.fastrand[0], globalFRS.fastrand[1]
+	s1 ^= s1 << 17
+	s1 = s1 ^ s0 ^ s1>>7 ^ s0>>16
+	globalFRS.fastrand[0], globalFRS.fastrand[1] = s0, s1
+	unlock(&globalFRS.lock)
+
+	return s0 + s1
+}
+
+func FastRandN(n uint32) uint32 {
+	// This is similar to fastrand() % n, but faster.
+	// See https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+	return uint32(uint64(FastRand()) * uint64(n) >> 32)
+}

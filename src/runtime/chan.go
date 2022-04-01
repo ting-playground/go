@@ -705,7 +705,7 @@ func chanparkcommit(gp *g, chanLock unsafe.Pointer) bool {
 //
 func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 	selected = chansend(c, elem, false, getcallerpc())
-	if !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
+	if !selected && SyncTrapperMap.IsEnabled() && FastRand()%2 == 0 {
 		waitSched(c)
 		selected = chansend(c, elem, false, getcallerpc())
 	}
@@ -736,7 +736,7 @@ func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 //
 func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
 	selected, received = chanrecv(c, elem, false)
-	if !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
+	if !selected && SyncTrapperMap.IsEnabled() && FastRand()%2 == 0 {
 		waitSched(c)
 		selected, received = chanrecv(c, elem, false)
 	}
@@ -751,7 +751,7 @@ func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
 //go:linkname reflect_chansend reflect.chansend
 func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
 	selected = chansend(c, elem, !nb, getcallerpc())
-	if nb && !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
+	if nb && !selected && SyncTrapperMap.IsEnabled() && FastRand()%2 == 0 {
 		waitSched(c)
 		selected = chansend(c, elem, !nb, getcallerpc())
 	}
@@ -766,7 +766,7 @@ func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
 //go:linkname reflect_chanrecv reflect.chanrecv
 func reflect_chanrecv(c *hchan, nb bool, elem unsafe.Pointer) (selected bool, received bool) {
 	selected, received = chanrecv(c, elem, !nb)
-	if nb && !selected && SyncTrapperMap.IsEnabled() && fastrand()%2 == 0 {
+	if nb && !selected && SyncTrapperMap.IsEnabled() && FastRand()%2 == 0 {
 		waitSched(c)
 		selected, received = chanrecv(c, elem, !nb)
 	}

@@ -173,7 +173,8 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 			continue
 		}
 
-		j := fastrandn(uint32(norder + 1))
+		// j := fastrandn(uint32(norder + 1))
+		j := FastRandN(uint32(norder + 1)) // MY CODE
 		pollorder[norder] = pollorder[j]
 		pollorder[j] = uint16(i)
 		norder++
@@ -248,7 +249,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	var recvOK bool
 
 	if SyncTrapperMap.IsEnabled() {
-		casj := int(fastrandn(uint32(norder)))
+		casj := int(FastRandN(uint32(norder)))
 		casi = int(pollorder[casj])
 		cas = &scases[casi]
 		c = cas.c
@@ -258,7 +259,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 			goto normal
 		}
 
-		if block && fastrandn(uint32(ncases)) == 0 {
+		if block && FastRandN(uint32(ncases)) == 0 {
 			// Try goto the default branch
 			goto normal
 		}
