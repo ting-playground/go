@@ -70,6 +70,8 @@ func init() {
 	cf.StringVar(&testTrace, "trace", "", "")
 	cf.BoolVar(&testV, "v", false, "")
 	cf.Var(&testShuffle, "shuffle", "")
+	cf.Bool("record", false, "")
+	cf.Bool("refine", false, "")
 
 	for name := range passFlagToTest {
 		cf.Var(cf.Lookup(name).Value, "test."+name, "")

@@ -305,6 +305,12 @@ func Init() {
 	parallel = flag.Int("test.parallel", runtime.GOMAXPROCS(0), "run at most `n` tests in parallel")
 	testlog = flag.String("test.testlogfile", "", "write test action log to `file` (for use only by cmd/go)")
 	shuffle = flag.String("test.shuffle", "off", "randomize the execution order of tests and benchmarks")
+	record = flag.Bool("test.record", false, "write a sparse execution trace to record.json")
+	refine = flag.Bool("test.refine", false, "refinement testing")
+
+	if *record {
+		*parallel = 1
+	}
 
 	initBenchmarkFlags()
 }
@@ -333,6 +339,11 @@ var (
 	parallel             *int
 	shuffle              *string
 	testlog              *string
+	record               *bool
+	refine               *bool
+
+	strace      *sparsetrace
+	straceTimes int
 
 	haveExamples bool // are there examples?
 
@@ -1257,7 +1268,16 @@ func tRunner(t *T, fn func(t *T)) {
 
 	t.start = time.Now()
 	t.raceErrors = -race.Errors()
+
+	if *record {
+		strace.start()
+	}
+
 	fn(t)
+
+	if *record {
+		strace.stop(t.name)
+	}
 
 	// code beyond here will not be executed when FailNow is invoked
 	t.mu.Lock()
@@ -1308,6 +1328,7 @@ func (t *T) Run(name string, f func(t *T)) bool {
 	// may especially reduce surprises if *parallel == 1.
 	go tRunner(t, f)
 	if !<-t.signal {
+		fmt.Println("We are quiting this goroutine")
 		// At this point, it is likely that FailNow was called on one of the
 		// parent tests by one of the subtests. Continue aborting up the chain.
 		runtime.Goexit()
@@ -1578,6 +1599,16 @@ func RunTests(matchString func(pat, str string) (bool, error), tests []InternalT
 func runTests(matchString func(pat, str string) (bool, error), tests []InternalTest, deadline time.Time) (ran, ok bool) {
 	ok = true
 
+	if *record {
+		strace = &sparsetrace{
+			storage: make(map[string][][]event),
+		}
+		straceTimes++
+		if straceTimes > 1 {
+			panic("This shouldn't happened twice")
+		}
+	}
+
 	for _, procs := range cpuList {
 		runtime.GOMAXPROCS(procs)
 		for i := uint(0); i < *count; i++ {
@@ -1592,22 +1623,32 @@ func runTests(matchString func(pat, str string) (bool, error), tests []InternalT
 					barrier: make(chan bool),
 					w:       os.Stdout,
 				},
-				suspectTests: &suspectTests{
+				context: ctx,
+			}
+
+			if *refine {
+				t.suspectTests = &suspectTests{
 					allTests: make(map[string]testWithIndex),
 					susTests: make(map[string]testWithIndex),
 					maxRetry: 10,
-				},
-				context: ctx,
-			}
-			t.AddAllTests(tests)
-			if len(tests) != len(t.ListAllTests()) {
-				panic("synctrapper: some tests is not add to all tests")
+				}
+				t.AddAllTests(tests)
+				if len(tests) != len(t.ListAllTests()) {
+					panic("synctrapper: some tests is not add to all tests")
+				}
 			}
 
 			if Verbose() {
 				t.chatty = newChattyPrinter(t.w)
 			}
 			tRunner(t, func(t *T) {
+				if *refine == false {
+					for _, test := range tests {
+						t.Run(test.Name, test.F)
+					}
+					return
+				}
+
 				for _, test := range t.ListAllTests() {
 					if WhiteList.Lookup(test.Name) {
 						continue
@@ -1633,6 +1674,11 @@ func runTests(matchString func(pat, str string) (bool, error), tests []InternalT
 			ran = ran || t.ran
 		}
 	}
+
+	if *record {
+		strace.store()
+	}
+
 	return ran, ok
 }
 
