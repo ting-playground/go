@@ -273,7 +273,7 @@ pkg runtime, type StTraceEvent struct
 pkg runtime, type StTraceEvent struct, Addr unsafe.Pointer
 pkg runtime, type StTraceEvent struct, Goid int64
 pkg runtime, type StTraceEvent struct, Now int64
-pkg runtime, type StTraceEvent struct, Hold int64
+pkg runtime, type StTraceEvent struct, Metadata int64
 pkg runtime, var StTrace *stTrace
 pkg runtime, type StTraceEvent struct, File string
 pkg runtime, type StTraceEvent struct, Line int

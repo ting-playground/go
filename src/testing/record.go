@@ -43,7 +43,7 @@ func (s *sparsetrace) stop(name string) {
 			File: e.File,
 			Line: e.Line,
 			Now:  e.Now,
-			Hold: e.Hold,
+			Hold: e.Metadata,
 			Addr: uintptr(e.Addr),
 		})
 	}

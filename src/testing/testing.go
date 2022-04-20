@@ -342,8 +342,7 @@ var (
 	record               *bool
 	refine               *bool
 
-	strace      *sparsetrace
-	straceTimes int
+	strace *sparsetrace
 
 	haveExamples bool // are there examples?
 
@@ -1268,16 +1267,7 @@ func tRunner(t *T, fn func(t *T)) {
 
 	t.start = time.Now()
 	t.raceErrors = -race.Errors()
-
-	if *record {
-		strace.start()
-	}
-
 	fn(t)
-
-	if *record {
-		strace.stop(t.name)
-	}
 
 	// code beyond here will not be executed when FailNow is invoked
 	t.mu.Lock()
@@ -1321,11 +1311,16 @@ func (t *T) Run(name string, f func(t *T)) bool {
 	if t.chatty != nil {
 		t.chatty.Updatef(t.name, "=== RUN   %s\n", t.name)
 	}
+	if *record && t.name != "" {
+		strace.start()
+	}
+
 	// Instead of reducing the running count of this test before calling the
 	// tRunner and increasing it afterwards, we rely on tRunner keeping the
 	// count correct. This ensures that a sequence of sequential tests runs
 	// without being preempted, even when their parent is a parallel test. This
 	// may especially reduce surprises if *parallel == 1.
+
 	go tRunner(t, f)
 	if !<-t.signal {
 		fmt.Println("We are quiting this goroutine")
@@ -1333,6 +1328,11 @@ func (t *T) Run(name string, f func(t *T)) bool {
 		// parent tests by one of the subtests. Continue aborting up the chain.
 		runtime.Goexit()
 	}
+
+	if *record && t.name != "" {
+		strace.stop(t.name)
+	}
+
 	return !t.failed
 }
 
@@ -1602,10 +1602,6 @@ func runTests(matchString func(pat, str string) (bool, error), tests []InternalT
 	if *record {
 		strace = &sparsetrace{
 			storage: make(map[string][][]event),
-		}
-		straceTimes++
-		if straceTimes > 1 {
-			panic("This shouldn't happened twice")
 		}
 	}
 

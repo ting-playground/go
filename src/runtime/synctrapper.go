@@ -70,13 +70,13 @@ const (
 )
 
 type StTraceEvent struct {
-	Goid int64
-	Now  int64
-	Type SyncEventType
-	Addr unsafe.Pointer
-	File string
-	Line int
-	Hold int64
+	Goid     int64
+	Now      int64
+	Type     SyncEventType
+	Addr     unsafe.Pointer
+	File     string
+	Line     int
+	Metadata int64
 }
 
 type stTrace struct {
@@ -201,13 +201,13 @@ func markNewproc(gp *g, newg *g) {
 	// We don't use race API here to avoid the runtime panic
 	lock(&StTrace.mu)
 	StTrace.traces = append(StTrace.traces, StTraceEvent{
-		Goid: gp.goid,
-		Now:  nanotime(),
-		Type: NewProcEvent,
-		Addr: unsafe.Pointer(gp),
-		File: file,
-		Line: line,
-		Hold: newg.goid,
+		Goid:     gp.goid,
+		Now:      nanotime(),
+		Type:     NewProcEvent,
+		Addr:     unsafe.Pointer(gp),
+		File:     file,
+		Line:     line,
+		Metadata: newg.goid,
 		// No need function name
 	})
 	unlock(&StTrace.mu)
@@ -321,13 +321,13 @@ func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 
 	if file != "" && line != 0 {
 		StTrace.append(StTraceEvent{
-			Goid: goid,
-			Now:  nanotime(),
-			Type: event,
-			Addr: unsafe.Pointer(c),
-			File: file,
-			Line: line,
-			Hold: order,
+			Goid:     goid,
+			Now:      nanotime(),
+			Type:     event,
+			Addr:     unsafe.Pointer(c),
+			File:     file,
+			Line:     line,
+			Metadata: order,
 		})
 	}
 }
@@ -342,13 +342,17 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 		return
 	}
 
+	var metadata int64
 	if c != nil {
 		lock(&c.lock)
+		metadata = int64(c.dataqsiz)
 		if c.syncid <= 0 {
 			unlock(&c.lock)
 			return
 		}
 		unlock(&c.lock)
+	} else {
+		metadata = -1
 	}
 
 	if tooFrequency(gp, event) {
@@ -374,12 +378,13 @@ func markChanEvent(c *hchan, event SyncEventType, skip int) {
 
 	if file != "" && line != 0 {
 		StTrace.append(StTraceEvent{
-			Goid: goid,
-			Now:  nanotime(),
-			Type: event,
-			Addr: unsafe.Pointer(c),
-			File: file,
-			Line: line,
+			Goid:     goid,
+			Now:      nanotime(),
+			Type:     event,
+			Addr:     unsafe.Pointer(c),
+			File:     file,
+			Line:     line,
+			Metadata: metadata,
 		})
 	}
 }
