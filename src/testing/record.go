@@ -8,13 +8,13 @@ import (
 )
 
 type event struct {
-	Type runtime.SyncEventType `json:"type"`
-	Goid int64                 `json:"goid"`
-	File string                `json:"file"`
-	Line int                   `json:"line"`
-	Now  int64                 `json:"now"`
-	Hold int64                 `json:"hold"`
-	Addr uintptr               `json:"addr"`
+	Type     runtime.SyncEventType `json:"type"`
+	Goid     int64                 `json:"goid"`
+	File     string                `json:"file"`
+	Line     int                   `json:"line"`
+	Now      int64                 `json:"now"`
+	Metadata int64                 `json:"metadata"`
+	Addr     uintptr               `json:"addr"`
 }
 
 type sparsetrace struct {
@@ -38,13 +38,13 @@ func (s *sparsetrace) stop(name string) {
 
 	for _, e := range st {
 		events = append(events, event{
-			Type: e.Type,
-			Goid: e.Goid,
-			File: e.File,
-			Line: e.Line,
-			Now:  e.Now,
-			Hold: e.Metadata,
-			Addr: uintptr(e.Addr),
+			Type:     e.Type,
+			Goid:     e.Goid,
+			File:     e.File,
+			Line:     e.Line,
+			Now:      e.Now,
+			Metadata: e.Metadata,
+			Addr:     uintptr(e.Addr),
 		})
 	}
 
