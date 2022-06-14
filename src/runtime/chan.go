@@ -49,7 +49,9 @@ type hchan struct {
 	// with stack shrinking.
 	lock mutex
 
-	syncid int64
+	syncid            int64
+	selectProbability uint32
+	selectWaitTimeout uint32
 }
 
 type waitq struct {
@@ -61,7 +63,7 @@ type waitq struct {
 func reflect_makechan(t *chantype, size int, id int64) *hchan {
 	ch := makechan(t, size, id)
 	if ch.syncid > 0 {
-		defer markChanEvent(ch, ChanReflectMakeEvent, 2)
+		defer recordChanEvent(ch, ChanReflectMakeEvent, 2)
 	}
 	return ch
 }
@@ -73,7 +75,7 @@ func makechan64(t *chantype, size int64, id int64) *hchan {
 
 	ch := makechan(t, int(size), id)
 	if ch.syncid > 0 {
-		defer markChanEvent(ch, ChanMake64Event, 2)
+		defer recordChanEvent(ch, ChanMake64Event, 2)
 	}
 	return ch
 }
@@ -127,7 +129,7 @@ func makechan(t *chantype, size int, id int64) *hchan {
 	}
 
 	if id > 0 {
-		markChanEvent(c, ChanMakeEvent, 2)
+		recordChanEvent(c, ChanMakeEvent, 2)
 	}
 
 	return c
@@ -157,7 +159,7 @@ func full(c *hchan) bool {
 //go:nosplit
 func chansend1(c *hchan, elem unsafe.Pointer) {
 	chansend(c, elem, true, getcallerpc())
-	markChanEvent(c, ChanSend1Event, 2)
+	recordChanEvent(c, ChanSend1Event, 2)
 }
 
 /*
@@ -370,7 +372,7 @@ func recvDirect(t *_type, sg *sudog, dst unsafe.Pointer) {
 }
 
 func closechan(c *hchan) {
-	defer markChanEvent(c, ChanCloseEvent, 2)
+	defer recordChanEvent(c, ChanCloseEvent, 2)
 	if c == nil {
 		panic(plainError("close of nil channel"))
 	}
@@ -455,13 +457,13 @@ func empty(c *hchan) bool {
 //go:nosplit
 func chanrecv1(c *hchan, elem unsafe.Pointer) {
 	chanrecv(c, elem, true)
-	markChanEvent(c, ChanRecv1Envet, 2)
+	recordChanEvent(c, ChanRecv1Envet, 2)
 }
 
 //go:nosplit
 func chanrecv2(c *hchan, elem unsafe.Pointer) (received bool) {
 	_, received = chanrecv(c, elem, true)
-	markChanEvent(c, ChanRecv2Event, 2)
+	recordChanEvent(c, ChanRecv2Event, 2)
 	return
 }
 
@@ -710,9 +712,9 @@ func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 		selected = chansend(c, elem, false, getcallerpc())
 	}
 	if selected {
-		markSelectEvent(c, SelectNbSendEvent, 0)
+		recordSelectEvent(c, SelectNbSendEvent, 0)
 	} else {
-		markSelectEvent(c, SelectDefaultEvent, -1)
+		recordSelectEvent(c, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -741,9 +743,9 @@ func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
 		selected, received = chanrecv(c, elem, false)
 	}
 	if selected {
-		markSelectEvent(c, SelectNbRecvEvent, 0)
+		recordSelectEvent(c, SelectNbRecvEvent, 0)
 	} else {
-		markSelectEvent(c, SelectDefaultEvent, -1)
+		recordSelectEvent(c, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -756,9 +758,9 @@ func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
 		selected = chansend(c, elem, !nb, getcallerpc())
 	}
 	if selected {
-		markSelectEvent(c, ChanReflectSendEvent, 0)
+		recordSelectEvent(c, ChanReflectSendEvent, 0)
 	} else {
-		markSelectEvent(c, SelectDefaultEvent, -1)
+		recordSelectEvent(c, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -771,9 +773,9 @@ func reflect_chanrecv(c *hchan, nb bool, elem unsafe.Pointer) (selected bool, re
 		selected, received = chanrecv(c, elem, !nb)
 	}
 	if selected {
-		markSelectEvent(c, ChanReflectRecvEvent, 0)
+		recordSelectEvent(c, ChanReflectRecvEvent, 0)
 	} else {
-		markSelectEvent(c, SelectDefaultEvent, -1)
+		recordSelectEvent(c, SelectDefaultEvent, -1)
 	}
 	return
 }
@@ -805,7 +807,7 @@ func reflect_chancap(c *hchan) int {
 //go:linkname reflect_chanclose reflect.chanclose
 func reflect_chanclose(c *hchan) {
 	closechan(c)
-	markChanEvent(c, ChanReflectCloseEvent, 3)
+	recordChanEvent(c, ChanReflectCloseEvent, 3)
 }
 
 func (q *waitq) enqueue(sgp *sudog) {

@@ -69,7 +69,7 @@ func (rw *RWMutex) RLock() {
 		race.Acquire(unsafe.Pointer(&rw.readerSem))
 	}
 
-	runtime.MarkEvent(unsafe.Pointer(rw), runtime.RLockEvent, 2)
+	runtime.RecordEvent(unsafe.Pointer(rw), runtime.RLockEvent, 2)
 }
 
 func (rw *RWMutex) rLockInternal() {
@@ -107,7 +107,7 @@ func (rw *RWMutex) RUnlock() {
 		race.Enable()
 	}
 
-	runtime.MarkEvent(unsafe.Pointer(rw), runtime.RUnlockEvent, 2)
+	runtime.RecordEvent(unsafe.Pointer(rw), runtime.RUnlockEvent, 2)
 }
 
 func (rw *RWMutex) rUnlockInternal() {
@@ -161,7 +161,7 @@ func (rw *RWMutex) Lock() {
 		race.Acquire(unsafe.Pointer(&rw.writerSem))
 	}
 
-	runtime.MarkEvent(unsafe.Pointer(rw), runtime.WLockEvent, 2)
+	runtime.RecordEvent(unsafe.Pointer(rw), runtime.WLockEvent, 2)
 }
 
 // Unlock unlocks rw for writing. It is a run-time error if rw is
@@ -193,7 +193,7 @@ func (rw *RWMutex) Unlock() {
 		race.Enable()
 	}
 
-	runtime.MarkEvent(unsafe.Pointer(rw), runtime.WUnlockEvent, 2)
+	runtime.RecordEvent(unsafe.Pointer(rw), runtime.WUnlockEvent, 2)
 }
 
 // RLocker returns a Locker interface that implements
@@ -206,9 +206,9 @@ type rlocker RWMutex
 
 func (r *rlocker) Lock() {
 	(*RWMutex)(r).rLockInternal()
-	runtime.MarkEvent(unsafe.Pointer(r), runtime.RLockEvent, 2)
+	runtime.RecordEvent(unsafe.Pointer(r), runtime.RLockEvent, 2)
 }
 func (r *rlocker) Unlock() {
 	(*RWMutex)(r).RUnlock()
-	runtime.MarkEvent(unsafe.Pointer(r), runtime.RUnlockEvent, 2)
+	runtime.RecordEvent(unsafe.Pointer(r), runtime.RUnlockEvent, 2)
 }

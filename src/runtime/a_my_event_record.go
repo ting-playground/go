@@ -187,7 +187,7 @@ func getGCallerInfo(gp *g, skip int) (file string, line int) {
 	return
 }
 
-func markNewproc(gp *g, newg *g) {
+func recordNewproc(gp *g, newg *g) {
 	if isSyncTraceDisabled() {
 		return
 	}
@@ -216,7 +216,7 @@ func markNewproc(gp *g, newg *g) {
 }
 
 //go:nosplit
-func markLastDeferReturn(skip int) {
+func recordLastDeferReturn(skip int) {
 	if isSyncTraceDisabled() {
 		return
 	}
@@ -248,7 +248,7 @@ func markLastDeferReturn(skip int) {
 	})
 }
 
-func markDeferEvent() {
+func recordDeferEvent() {
 	if isSyncTraceDisabled() {
 		return
 	}
@@ -280,7 +280,7 @@ func markDeferEvent() {
 	})
 }
 
-func markSelectEvent(c *hchan, event SyncEventType, order int64) {
+func recordSelectEvent(c *hchan, event SyncEventType, order int64) {
 	if isSyncTraceDisabled() {
 		return
 	}
@@ -332,7 +332,7 @@ func markSelectEvent(c *hchan, event SyncEventType, order int64) {
 	}
 }
 
-func markChanEvent(c *hchan, event SyncEventType, skip int) {
+func recordChanEvent(c *hchan, event SyncEventType, skip int) {
 	if isSyncTraceDisabled() {
 		return
 	}
@@ -425,7 +425,7 @@ func findCallTrap(skip int) (file string, line int) {
 	return
 }
 
-func MarkEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
+func RecordEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
 	if isSyncTraceDisabled() {
 		return
 	}
