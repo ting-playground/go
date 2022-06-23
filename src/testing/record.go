@@ -62,7 +62,13 @@ func (s *sparsetrace) store() {
 		panic(err)
 	}
 
-	if err = os.WriteFile("record.json", data, 0644); err != nil {
+	file := "record.json"
+
+	if prefix, ok := os.LookupEnv("SYNCTRAPPER_TRACE_PREFIX"); ok {
+		file = prefix + file
+	}
+
+	if err = os.WriteFile(file, data, 0644); err != nil {
 		panic(err)
 	}
 }

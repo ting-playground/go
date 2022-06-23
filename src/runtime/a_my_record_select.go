@@ -1,124 +1,11 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package runtime
-
-// This file contains the implementation of Go select statements.
 
 import (
 	"runtime/internal/atomic"
 	"unsafe"
 )
 
-const debugSelect = false
-
-// Select case descriptor.
-// Known to compiler.
-// Changes here must also be made in src/cmd/compile/internal/walk/select.go's scasetype.
-type scase struct {
-	c    *hchan         // chan
-	elem unsafe.Pointer // data element
-}
-
-var (
-	chansendpc = funcPC(chansend)
-	chanrecvpc = funcPC(chanrecv)
-)
-
-func selectsetpc(pc *uintptr) {
-	*pc = getcallerpc()
-}
-
-func sellock(scases []scase, lockorder []uint16) {
-	var c *hchan
-	for _, o := range lockorder {
-		c0 := scases[o].c
-		if c0 != c {
-			c = c0
-			lock(&c.lock)
-		}
-	}
-}
-
-func selunlock(scases []scase, lockorder []uint16) {
-	// We must be very careful here to not touch sel after we have unlocked
-	// the last lock, because sel can be freed right after the last unlock.
-	// Consider the following situation.
-	// First M calls runtime·park() in runtime·selectgo() passing the sel.
-	// Once runtime·park() has unlocked the last lock, another M makes
-	// the G that calls select runnable again and schedules it for execution.
-	// When the G runs on another M, it locks all the locks and frees sel.
-	// Now if the first M touches sel, it will access freed memory.
-	for i := len(lockorder) - 1; i >= 0; i-- {
-		c := scases[lockorder[i]].c
-		if i > 0 && c == scases[lockorder[i-1]].c {
-			continue // will unlock it on the next iteration
-		}
-		unlock(&c.lock)
-	}
-}
-
-func selparkcommit(gp *g, _ unsafe.Pointer) bool {
-	// There are unlocked sudogs that point into gp's stack. Stack
-	// copying must lock the channels of those sudogs.
-	// Set activeStackChans here instead of before we try parking
-	// because we could self-deadlock in stack growth on a
-	// channel lock.
-	gp.activeStackChans = true
-	// Mark that it's safe for stack shrinking to occur now,
-	// because any thread acquiring this G's stack for shrinking
-	// is guaranteed to observe activeStackChans after this store.
-	atomic.Store8(&gp.parkingOnChan, 0)
-	// Make sure we unlock after setting activeStackChans and
-	// unsetting parkingOnChan. The moment we unlock any of the
-	// channel locks we risk gp getting readied by a channel operation
-	// and so gp could continue running before everything before the
-	// unlock is visible (even to gp itself).
-
-	// This must not access gp's stack (see gopark). In
-	// particular, it must not access the *hselect. That's okay,
-	// because by the time this is called, gp.waiting has all
-	// channels in lock order.
-	var lastc *hchan
-	for sg := gp.waiting; sg != nil; sg = sg.waitlink {
-		if sg.c != lastc && lastc != nil {
-			// As soon as we unlock the channel, fields in
-			// any sudog with that channel may change,
-			// including c and waitlink. Since multiple
-			// sudogs may have the same channel, we unlock
-			// only after we've passed the last instance
-			// of a channel.
-			unlock(&lastc.lock)
-		}
-		lastc = sg.c
-	}
-	if lastc != nil {
-		unlock(&lastc.lock)
-	}
-	return true
-}
-
-func block() {
-	gopark(nil, nil, waitReasonSelectNoCases, traceEvGoStop, 1) // forever
-}
-
-// selectgo implements the select statement.
-//
-// cas0 points to an array of type [ncases]scase, and order0 points to
-// an array of type [2*ncases]uint16 where ncases must be <= 65536.
-// Both reside on the goroutine's stack (regardless of any escaping in
-// selectgo).
-//
-// For race detector builds, pc0 points to an array of type
-// [ncases]uintptr (also on the stack); for other builds, it's set to
-// nil.
-//
-// selectgo returns the index of the chosen scase, which matches the
-// ordinal position of its respective select{recv,send,default} call.
-// Also, if the chosen scase was a receive operation, it reports whether
-// a value was received.
-func _selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, block bool) (int, bool) {
+func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, block bool) (int, bool) {
 	if debugSelect {
 		print("select: cas0=", cas0, "\n")
 	}
@@ -282,6 +169,7 @@ func _selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, bl
 	if !block {
 		selunlock(scases, lockorder)
 		casi = -1
+		recordSelectEvent(c, SelectDefaultEvent, int64(casi))
 		goto retc
 	}
 
@@ -407,6 +295,7 @@ func _selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, bl
 	}
 
 	selunlock(scases, lockorder)
+	recordSelectEvent(c, SelectWakeUpEvent, int64(casi))
 	goto retc
 
 bufrecv:
@@ -432,6 +321,7 @@ bufrecv:
 	}
 	c.qcount--
 	selunlock(scases, lockorder)
+	recordSelectEvent(c, SelectBufRecvEvent, int64(casi))
 	goto retc
 
 bufsend:
@@ -450,6 +340,7 @@ bufsend:
 	}
 	c.qcount++
 	selunlock(scases, lockorder)
+	recordSelectEvent(c, SelectBufSendEvent, int64(casi))
 	goto retc
 
 recv:
@@ -459,6 +350,7 @@ recv:
 		print("syncrecv: cas0=", cas0, " c=", c, "\n")
 	}
 	recvOK = true
+	recordSelectEvent(c, SelectRecvEvent, int64(casi))
 	goto retc
 
 rclose:
@@ -471,6 +363,7 @@ rclose:
 	if raceenabled {
 		raceacquire(c.raceaddr())
 	}
+	recordSelectEvent(c, SelectCloseRecvEvent, int64(casi))
 	goto retc
 
 send:
@@ -485,6 +378,7 @@ send:
 	if debugSelect {
 		print("syncsend: cas0=", cas0, " c=", c, "\n")
 	}
+	recordSelectEvent(c, SelectSendEvent, int64(casi))
 	goto retc
 
 retc:
@@ -497,120 +391,4 @@ sclose:
 	// send on closed channel
 	selunlock(scases, lockorder)
 	panic(plainError("send on closed channel"))
-}
-
-func (c *hchan) sortkey() uintptr {
-	return uintptr(unsafe.Pointer(c))
-}
-
-// A runtimeSelect is a single case passed to rselect.
-// This must match ../reflect/value.go:/runtimeSelect
-type runtimeSelect struct {
-	dir selectDir
-	typ unsafe.Pointer // channel type (not used here)
-	ch  *hchan         // channel
-	val unsafe.Pointer // ptr to data (SendDir) or ptr to receive buffer (RecvDir)
-}
-
-// These values must match ../reflect/value.go:/SelectDir.
-type selectDir int
-
-const (
-	_             selectDir = iota
-	selectSend              // case Chan <- Send
-	selectRecv              // case <-Chan:
-	selectDefault           // default
-)
-
-//go:linkname reflect_rselect reflect.rselect
-func reflect_rselect(cases []runtimeSelect) (int, bool) {
-	if len(cases) == 0 {
-		block()
-	}
-	sel := make([]scase, len(cases))
-	orig := make([]int, len(cases))
-	nsends, nrecvs := 0, 0
-	dflt := -1
-	for i, rc := range cases {
-		var j int
-		switch rc.dir {
-		case selectDefault:
-			dflt = i
-			continue
-		case selectSend:
-			j = nsends
-			nsends++
-		case selectRecv:
-			nrecvs++
-			j = len(cases) - nrecvs
-		}
-
-		sel[j] = scase{c: rc.ch, elem: rc.val}
-		orig[j] = i
-	}
-
-	// Only a default case.
-	if nsends+nrecvs == 0 {
-		return dflt, false
-	}
-
-	// Compact sel and orig if necessary.
-	if nsends+nrecvs < len(cases) {
-		copy(sel[nsends:], sel[len(cases)-nrecvs:])
-		copy(orig[nsends:], orig[len(cases)-nrecvs:])
-	}
-
-	order := make([]uint16, 2*(nsends+nrecvs))
-	var pc0 *uintptr
-	if raceenabled {
-		pcs := make([]uintptr, nsends+nrecvs)
-		for i := range pcs {
-			selectsetpc(&pcs[i])
-		}
-		pc0 = &pcs[0]
-	}
-
-	chosen, recvOK := selectgo(&sel[0], &order[0], pc0, nsends, nrecvs, dflt == -1)
-
-	// Translate chosen back to caller's ordering.
-	if chosen < 0 {
-		chosen = dflt
-	} else {
-		chosen = orig[chosen]
-	}
-	return chosen, recvOK
-}
-
-func (q *waitq) dequeueSudoG(sgp *sudog) {
-	x := sgp.prev
-	y := sgp.next
-	if x != nil {
-		if y != nil {
-			// middle of queue
-			x.next = y
-			y.prev = x
-			sgp.next = nil
-			sgp.prev = nil
-			return
-		}
-		// end of queue
-		x.next = nil
-		q.last = x
-		sgp.prev = nil
-		return
-	}
-	if y != nil {
-		// start of queue
-		y.prev = nil
-		q.first = y
-		sgp.next = nil
-		return
-	}
-
-	// x==y==nil. Either sgp is the only element in the queue,
-	// or it has already been removed. Use q.first to disambiguate.
-	if q.first == sgp {
-		q.first = nil
-		q.last = nil
-	}
 }

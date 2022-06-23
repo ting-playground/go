@@ -376,17 +376,25 @@ func recordChanEvent(c *hchan, event SyncEventType, skip int) {
 		}
 	}
 
-	if file != "" && line != 0 {
-		StTrace.append(StTraceEvent{
-			Goid:     goid,
-			Now:      nanotime(),
-			Type:     event,
-			Addr:     unsafe.Pointer(c),
-			File:     file,
-			Line:     line,
-			Metadata: metadata,
-		})
+	if file == "" || line == 0 {
+		if event != ChanCloseEvent {
+			return
+		}
+
+		// handle "go close(ch)"
+		pc := getg().startpc
+		file, line = FuncForPC(pc).FileLine(pc)
 	}
+
+	StTrace.append(StTraceEvent{
+		Goid:     goid,
+		Now:      nanotime(),
+		Type:     event,
+		Addr:     unsafe.Pointer(c),
+		File:     file,
+		Line:     line,
+		Metadata: metadata,
+	})
 }
 
 func findCallTrap(skip int) (file string, line int) {
@@ -429,6 +437,8 @@ func RecordEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
 	if isSyncTraceDisabled() {
 		return
 	}
+
+	skip += 2
 
 	gp := getg()
 	if gp.isNotUserSpaceG {
