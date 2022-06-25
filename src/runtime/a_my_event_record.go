@@ -215,6 +215,10 @@ func recordNewproc(gp *g, newg *g) {
 	return
 }
 
+func Goid() int64 {
+	return getg().goid
+}
+
 //go:nosplit
 func recordLastDeferReturn(skip int) {
 	if isSyncTraceDisabled() {
@@ -406,11 +410,25 @@ func findCallTrap(skip int) (file string, line int) {
 
 	pc = pc[:n]
 	frames := CallersFrames(pc)
+	for i := 0; i < 2; i++ {
+		frame, _ := frames.Next()
+		file, line = frame.File, frame.Line
+	}
+
+	// All tracked synchronizations should be called by reflect
+	if !hasSuffix(file, "reflect/value.go") {
+		return "", 0
+	}
+	
 	for i := 0; i < 3; i++ {
 		frame, more := frames.Next()
 
 		file, line = frame.File, frame.Line
 		if hasSuffix(file, "trapper/trap.go") {
+			if !hasSuffix(frame.Func.Name(), "Trap") {
+				return "", 0
+			}
+
 			frame, _ = frames.Next()
 			return frame.File, frame.Line
 		}
@@ -437,8 +455,6 @@ func RecordEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
 	if isSyncTraceDisabled() {
 		return
 	}
-
-	skip += 2
 
 	gp := getg()
 	if gp.isNotUserSpaceG {
