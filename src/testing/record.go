@@ -14,6 +14,7 @@ type event struct {
 	Line     int                   `json:"line"`
 	Now      int64                 `json:"now"`
 	Metadata int64                 `json:"metadata"`
+	Cap      uint                  `json:"cap"`
 	Addr     uintptr               `json:"addr"`
 }
 
@@ -44,6 +45,7 @@ func (s *sparsetrace) stop(name string) {
 			Line:     e.Line,
 			Now:      e.Now,
 			Metadata: e.Metadata,
+			Cap:      e.Cap,
 			Addr:     uintptr(e.Addr),
 		})
 	}

@@ -77,6 +77,7 @@ type StTraceEvent struct {
 	File     string
 	Line     int
 	Metadata int64
+	Cap      uint
 }
 
 type stTrace struct {
@@ -294,12 +295,14 @@ func recordSelectEvent(c *hchan, event SyncEventType, order int64) {
 		return
 	}
 
+	var capsize uint
 	if c != nil {
 		lock(&c.lock)
 		if c.syncid <= 0 {
 			unlock(&c.lock)
 			return
 		}
+		capsize = c.dataqsiz
 		unlock(&c.lock)
 	}
 
@@ -332,6 +335,7 @@ func recordSelectEvent(c *hchan, event SyncEventType, order int64) {
 			File:     file,
 			Line:     line,
 			Metadata: order,
+			Cap:      capsize,
 		})
 	}
 }
@@ -346,17 +350,15 @@ func recordChanEvent(c *hchan, event SyncEventType, skip int) {
 		return
 	}
 
-	var metadata int64
+	var capsize uint
 	if c != nil {
 		lock(&c.lock)
-		metadata = int64(c.dataqsiz)
+		capsize = c.dataqsiz
 		if c.syncid <= 0 {
 			unlock(&c.lock)
 			return
 		}
 		unlock(&c.lock)
-	} else {
-		metadata = -1
 	}
 
 	if tooFrequency(gp, event) {
@@ -391,13 +393,13 @@ func recordChanEvent(c *hchan, event SyncEventType, skip int) {
 	}
 
 	StTrace.append(StTraceEvent{
-		Goid:     goid,
-		Now:      nanotime(),
-		Type:     event,
-		Addr:     unsafe.Pointer(c),
-		File:     file,
-		Line:     line,
-		Metadata: metadata,
+		Goid: goid,
+		Now:  nanotime(),
+		Type: event,
+		Addr: unsafe.Pointer(c),
+		File: file,
+		Line: line,
+		Cap:  capsize,
 	})
 }
 
@@ -410,7 +412,7 @@ func findCallTrap(skip int) (file string, line int) {
 
 	pc = pc[:n]
 	frames := CallersFrames(pc)
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		frame, _ := frames.Next()
 		file, line = frame.File, frame.Line
 	}
@@ -419,7 +421,7 @@ func findCallTrap(skip int) (file string, line int) {
 	if !hasSuffix(file, "reflect/value.go") {
 		return "", 0
 	}
-	
+
 	for i := 0; i < 3; i++ {
 		frame, more := frames.Next()
 
