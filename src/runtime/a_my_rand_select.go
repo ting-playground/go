@@ -66,6 +66,7 @@ func randSelect(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, b
 		pollorder[j] = uint16(i)
 		norder++
 	}
+
 	pollorder = pollorder[:norder]
 	lockorder = lockorder[:norder]
 
@@ -247,7 +248,7 @@ normal:
 	if !block {
 		selunlock(scases, lockorder)
 		casi = -1
-		recordSelectEvent(c, SelectDefaultEvent, int64(casi))
+		recordSelectEvent(c, SelectDefaultEvent, int64(casi), ncases)
 		goto retc
 	}
 
@@ -373,7 +374,7 @@ normal:
 	}
 
 	selunlock(scases, lockorder)
-	recordSelectEvent(c, SelectWakeUpEvent, int64(casi))
+	recordSelectEvent(c, SelectWakeUpEvent, int64(casi), ncases)
 	goto retc
 
 bufrecv:
@@ -399,7 +400,7 @@ bufrecv:
 	}
 	c.qcount--
 	selunlock(scases, lockorder)
-	recordSelectEvent(c, SelectBufRecvEvent, int64(casi))
+	recordSelectEvent(c, SelectBufRecvEvent, int64(casi), ncases)
 	goto retc
 
 bufsend:
@@ -418,7 +419,7 @@ bufsend:
 	}
 	c.qcount++
 	selunlock(scases, lockorder)
-	recordSelectEvent(c, SelectBufSendEvent, int64(casi))
+	recordSelectEvent(c, SelectBufSendEvent, int64(casi), ncases)
 	goto retc
 
 recv:
@@ -428,7 +429,7 @@ recv:
 		print("syncrecv: cas0=", cas0, " c=", c, "\n")
 	}
 	recvOK = true
-	recordSelectEvent(c, SelectRecvEvent, int64(casi))
+	recordSelectEvent(c, SelectRecvEvent, int64(casi), ncases)
 	goto retc
 
 rclose:
@@ -441,7 +442,7 @@ rclose:
 	if raceenabled {
 		raceacquire(c.raceaddr())
 	}
-	recordSelectEvent(c, SelectCloseRecvEvent, int64(casi))
+	recordSelectEvent(c, SelectCloseRecvEvent, int64(casi), ncases)
 	goto retc
 
 send:
@@ -456,7 +457,7 @@ send:
 	if debugSelect {
 		print("syncsend: cas0=", cas0, " c=", c, "\n")
 	}
-	recordSelectEvent(c, SelectSendEvent, int64(casi))
+	recordSelectEvent(c, SelectSendEvent, int64(casi), ncases)
 	goto retc
 
 retc:

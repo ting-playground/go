@@ -12,7 +12,6 @@ package sync
 
 import (
 	"internal/race"
-	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -76,12 +75,11 @@ func (m *Mutex) Lock() {
 		if race.Enabled {
 			race.Acquire(unsafe.Pointer(m))
 		}
-		runtime.RecordEvent(unsafe.Pointer(m), runtime.LockEvent, 2)
+
 		return
 	}
 	// Slow path (outlined so that the fast path can be inlined)
 	m.lockSlow()
-	runtime.RecordEvent(unsafe.Pointer(m), runtime.LockEvent, 2)
 }
 
 func (m *Mutex) lockInternal() {
@@ -204,7 +202,6 @@ func (m *Mutex) Unlock() {
 		// To hide unlockSlow during tracing we skip one extra frame when tracing GoUnblock.
 		m.unlockSlow(new)
 	}
-	runtime.RecordEvent(unsafe.Pointer(m), runtime.UnlockEvent, 2)
 }
 
 func (m *Mutex) unlockInternal() {

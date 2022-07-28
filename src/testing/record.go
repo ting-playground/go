@@ -14,8 +14,9 @@ type event struct {
 	Line     int                   `json:"line"`
 	Now      int64                 `json:"now"`
 	Metadata int64                 `json:"metadata"`
-	Cap      uint                  `json:"cap"`
+	Len      uint                  `json:"len"`
 	Addr     uintptr               `json:"addr"`
+	SyncID   int64                 `json:"syncid"`
 }
 
 type sparsetrace struct {
@@ -45,8 +46,9 @@ func (s *sparsetrace) stop(name string) {
 			Line:     e.Line,
 			Now:      e.Now,
 			Metadata: e.Metadata,
-			Cap:      e.Cap,
+			Len:      e.Len,
 			Addr:     uintptr(e.Addr),
+			SyncID:   e.SyncID,
 		})
 	}
 
@@ -68,6 +70,8 @@ func (s *sparsetrace) store() {
 
 	if prefix, ok := os.LookupEnv("SYNCTRAPPER_TRACE_PREFIX"); ok {
 		file = prefix + file
+	} else {
+		return
 	}
 
 	if err = os.WriteFile(file, data, 0644); err != nil {

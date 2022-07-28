@@ -3621,6 +3621,8 @@ func goyield_m(gp *g) {
 
 // Finishes execution of the current goroutine.
 func goexit1() {
+	StTrace.appendEvents(getg().localEvents)
+
 	if raceenabled {
 		racegoend()
 	}
@@ -3651,6 +3653,7 @@ func goexit0(gp *g) {
 	gp.param = nil
 	gp.labels = nil
 	gp.timer = nil
+	gp.localEvents = nil
 
 	if gcBlackenEnabled != 0 && gp.gcAssistBytes > 0 {
 		// Flush assist credit to the global pool. This gives

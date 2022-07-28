@@ -77,7 +77,8 @@ type StTraceEvent struct {
 	File     string
 	Line     int
 	Metadata int64
-	Cap      uint
+	Len      uint
+	SyncID   int64
 }
 
 type stTrace struct {
@@ -132,6 +133,12 @@ func (s *stTrace) Get() []StTraceEvent {
 func (s *stTrace) append(event StTraceEvent) {
 	s.lock()
 	s.traces = append(s.traces, event)
+	s.unlock()
+}
+
+func (s *stTrace) appendEvents(events []StTraceEvent) {
+	s.lock()
+	s.traces = append(s.traces, events...)
 	s.unlock()
 }
 
@@ -209,7 +216,7 @@ func recordNewproc(gp *g, newg *g) {
 		File:     file,
 		Line:     line,
 		Metadata: newg.goid,
-		// No need function name
+		// No need function name and sync ID
 	})
 	unlock(&StTrace.mu)
 
@@ -243,14 +250,25 @@ func recordLastDeferReturn(skip int) {
 		return
 	}
 
-	StTrace.append(StTraceEvent{
-		Goid: goid,
-		Now:  nanotime(),
-		Type: DeferReturnEvent,
-		File: file,
-		Line: line,
-		Addr: unsafe.Pointer(FuncForPC(pc)),
+	gp.localEvents = append(gp.localEvents, StTraceEvent{
+		Goid:   goid,
+		Now:    nanotime(),
+		Type:   DeferReturnEvent,
+		File:   file,
+		Line:   line,
+		Addr:   unsafe.Pointer(FuncForPC(pc)),
+		SyncID: gp.curSyncID,
 	})
+	/*
+		StTrace.append(StTraceEvent{
+			Goid: goid,
+			Now:  nanotime(),
+			Type: DeferReturnEvent,
+			File: file,
+			Line: line,
+			Addr: unsafe.Pointer(FuncForPC(pc)),
+		})
+	*/
 }
 
 func recordDeferEvent() {
@@ -275,17 +293,28 @@ func recordDeferEvent() {
 		pc, file, line, _ = Caller(3)
 	}
 
-	StTrace.append(StTraceEvent{
-		Goid: goid,
-		Now:  nanotime(),
-		Type: DeferEvent,
-		File: file,
-		Line: line,
-		Addr: unsafe.Pointer(FuncForPC(pc)),
+	gp.localEvents = append(gp.localEvents, StTraceEvent{
+		Goid:   goid,
+		Now:    nanotime(),
+		Type:   DeferEvent,
+		File:   file,
+		Line:   line,
+		Addr:   unsafe.Pointer(FuncForPC(pc)),
+		SyncID: gp.curSyncID,
 	})
+	/*
+		StTrace.append(StTraceEvent{
+			Goid: goid,
+			Now:  nanotime(),
+			Type: DeferEvent,
+			File: file,
+			Line: line,
+			Addr: unsafe.Pointer(FuncForPC(pc)),
+		})
+	*/
 }
 
-func recordSelectEvent(c *hchan, event SyncEventType, order int64) {
+func recordSelectEvent(c *hchan, event SyncEventType, order int64, ncases int) {
 	if isSyncTraceDisabled() {
 		return
 	}
@@ -327,7 +356,7 @@ func recordSelectEvent(c *hchan, event SyncEventType, order int64) {
 	}
 
 	if file != "" && line != 0 {
-		StTrace.append(StTraceEvent{
+		gp.localEvents = append(gp.localEvents, StTraceEvent{
 			Goid:     goid,
 			Now:      nanotime(),
 			Type:     event,
@@ -335,8 +364,21 @@ func recordSelectEvent(c *hchan, event SyncEventType, order int64) {
 			File:     file,
 			Line:     line,
 			Metadata: order,
-			Cap:      capsize,
+			Len:      capsize,
+			SyncID:   gp.curSyncID,
 		})
+		/*
+			StTrace.append(StTraceEvent{
+				Goid:     goid,
+				Now:      nanotime(),
+				Type:     event,
+				Addr:     unsafe.Pointer(c),
+				File:     file,
+				Line:     line,
+				Metadata: order,
+				Cap:      capsize,
+			})
+		*/
 	}
 }
 
@@ -392,15 +434,27 @@ func recordChanEvent(c *hchan, event SyncEventType, skip int) {
 		file, line = FuncForPC(pc).FileLine(pc)
 	}
 
-	StTrace.append(StTraceEvent{
-		Goid: goid,
-		Now:  nanotime(),
-		Type: event,
-		Addr: unsafe.Pointer(c),
-		File: file,
-		Line: line,
-		Cap:  capsize,
+	gp.localEvents = append(gp.localEvents, StTraceEvent{
+		Goid:   goid,
+		Now:    nanotime(),
+		Type:   event,
+		Addr:   unsafe.Pointer(c),
+		File:   file,
+		Line:   line,
+		Len:    capsize,
+		SyncID: gp.curSyncID,
 	})
+	/*
+		StTrace.append(StTraceEvent{
+			Goid: goid,
+			Now:  nanotime(),
+			Type: event,
+			Addr: unsafe.Pointer(c),
+			File: file,
+			Line: line,
+			Cap:  capsize,
+		})
+	*/
 }
 
 func findCallTrap(skip int) (file string, line int) {
@@ -412,15 +466,17 @@ func findCallTrap(skip int) (file string, line int) {
 
 	pc = pc[:n]
 	frames := CallersFrames(pc)
-	for i := 0; i < 3; i++ {
-		frame, _ := frames.Next()
-		file, line = frame.File, frame.Line
-	}
+	/*
+		for i := 0; i < 3; i++ {
+			frame, _ := frames.Next()
+			file, line = frame.File, frame.Line
+		}
 
-	// All tracked synchronizations should be called by reflect
-	if !hasSuffix(file, "reflect/value.go") {
-		return "", 0
-	}
+		// All tracked synchronizations should be called by reflect
+		if !hasSuffix(file, "reflect/value.go") {
+			return "", 0
+		}
+	*/
 
 	for i := 0; i < 3; i++ {
 		frame, more := frames.Next()
@@ -453,6 +509,50 @@ func findCallTrap(skip int) (file string, line int) {
 	return
 }
 
+func RecordEventInternal(addr unsafe.Pointer, event SyncEventType, skip int) {
+	if isSyncTraceDisabled() {
+		return
+	}
+
+	gp := getg()
+	if gp.isNotUserSpaceG {
+		return
+	}
+
+	if tooFrequency(gp, event) {
+		return
+	}
+
+	goid := gp.goid
+	file, line := findCallTrap(skip)
+
+	// we only append synchronizations trapped by trapper/trap.go
+	if file != "" && line != 0 {
+		gp.localEvents = append(gp.localEvents, StTraceEvent{
+			Goid:   goid,
+			Now:    nanotime(),
+			Type:   event,
+			Addr:   addr,
+			File:   file,
+			Line:   line,
+			SyncID: gp.curSyncID,
+		})
+		/*
+			StTrace.append(StTraceEvent{
+				Goid: goid,
+				Now:  nanotime(),
+				Type: event,
+				Addr: addr,
+				File: file,
+				Line: line,
+			})
+		*/
+		return
+	}
+
+	return
+}
+
 func RecordEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
 	if isSyncTraceDisabled() {
 		return
@@ -472,14 +572,25 @@ func RecordEvent(addr unsafe.Pointer, event SyncEventType, skip int) {
 
 	// we only append synchronizations trapped by trapper/trap.go
 	if file != "" && line != 0 {
-		StTrace.append(StTraceEvent{
-			Goid: goid,
-			Now:  nanotime(),
-			Type: event,
-			Addr: addr,
-			File: file,
-			Line: line,
+		gp.localEvents = append(gp.localEvents, StTraceEvent{
+			Goid:   goid,
+			Now:    nanotime(),
+			Type:   event,
+			Addr:   addr,
+			File:   file,
+			Line:   line,
+			SyncID: gp.curSyncID,
 		})
+		/*
+			StTrace.append(StTraceEvent{
+				Goid: goid,
+				Now:  nanotime(),
+				Type: event,
+				Addr: addr,
+				File: file,
+				Line: line,
+			})
+		*/
 		return
 	}
 
@@ -540,6 +651,8 @@ var SyncTrapperMap *syncTrapperMap = &syncTrapperMap{
 }
 
 func waitSched(c *hchan) {
+	return
+
 	if c == nil {
 		return
 	}

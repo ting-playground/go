@@ -6,7 +6,6 @@ package sync
 
 import (
 	"internal/race"
-	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -68,24 +67,6 @@ func (rw *RWMutex) RLock() {
 		race.Enable()
 		race.Acquire(unsafe.Pointer(&rw.readerSem))
 	}
-
-	runtime.RecordEvent(unsafe.Pointer(rw), runtime.RLockEvent, 2)
-}
-
-func (rw *RWMutex) rLockInternal() {
-	if race.Enabled {
-		_ = rw.w.state
-		race.Disable()
-	}
-
-	if atomic.AddInt32(&rw.readerCount, 1) < 0 {
-		// A writer is pending, wait for it.
-		runtime_SemacquireMutex(&rw.readerSem, false, 0)
-	}
-	if race.Enabled {
-		race.Enable()
-		race.Acquire(unsafe.Pointer(&rw.readerSem))
-	}
 }
 
 // RUnlock undoes a single RLock call;
@@ -93,24 +74,6 @@ func (rw *RWMutex) rLockInternal() {
 // It is a run-time error if rw is not locked for reading
 // on entry to RUnlock.
 func (rw *RWMutex) RUnlock() {
-	if race.Enabled {
-		_ = rw.w.state
-		race.ReleaseMerge(unsafe.Pointer(&rw.writerSem))
-		race.Disable()
-	}
-
-	if r := atomic.AddInt32(&rw.readerCount, -1); r < 0 {
-		// Outlined slow-path to allow the fast-path to be inlined
-		rw.rUnlockSlow(r)
-	}
-	if race.Enabled {
-		race.Enable()
-	}
-
-	runtime.RecordEvent(unsafe.Pointer(rw), runtime.RUnlockEvent, 2)
-}
-
-func (rw *RWMutex) rUnlockInternal() {
 	if race.Enabled {
 		_ = rw.w.state
 		race.ReleaseMerge(unsafe.Pointer(&rw.writerSem))
@@ -160,8 +123,6 @@ func (rw *RWMutex) Lock() {
 		race.Acquire(unsafe.Pointer(&rw.readerSem))
 		race.Acquire(unsafe.Pointer(&rw.writerSem))
 	}
-
-	runtime.RecordEvent(unsafe.Pointer(rw), runtime.WLockEvent, 2)
 }
 
 // Unlock unlocks rw for writing. It is a run-time error if rw is
@@ -192,8 +153,6 @@ func (rw *RWMutex) Unlock() {
 	if race.Enabled {
 		race.Enable()
 	}
-
-	runtime.RecordEvent(unsafe.Pointer(rw), runtime.WUnlockEvent, 2)
 }
 
 // RLocker returns a Locker interface that implements
@@ -205,10 +164,20 @@ func (rw *RWMutex) RLocker() Locker {
 type rlocker RWMutex
 
 func (r *rlocker) Lock() {
-	(*RWMutex)(r).rLockInternal()
-	runtime.RecordEvent(unsafe.Pointer(r), runtime.RLockEvent, 2)
+	if race.Enabled {
+		_ = r.w.state
+		race.Disable()
+	}
+
+	if atomic.AddInt32(&r.readerCount, 1) < 0 {
+		// A writer is pending, wait for it.
+		runtime_SemacquireMutex(&r.readerSem, false, 0)
+	}
+	if race.Enabled {
+		race.Enable()
+		race.Acquire(unsafe.Pointer(&r.readerSem))
+	}
 }
 func (r *rlocker) Unlock() {
 	(*RWMutex)(r).RUnlock()
-	runtime.RecordEvent(unsafe.Pointer(r), runtime.RUnlockEvent, 2)
 }

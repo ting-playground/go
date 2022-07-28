@@ -5,7 +5,6 @@
 package sync
 
 import (
-	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -52,7 +51,7 @@ func NewCond(l Locker) *Cond {
 //
 func (c *Cond) Wait() {
 	c.checker.check()
-	runtime.RecordEvent(unsafe.Pointer(c), runtime.CondWaitEvent, 2)
+
 	t := runtime_notifyListAdd(&c.notify)
 	c.L.Unlock()
 	runtime_notifyListWait(&c.notify, t)
@@ -66,7 +65,7 @@ func (c *Cond) Wait() {
 func (c *Cond) Signal() {
 	c.checker.check()
 	runtime_notifyListNotifyOne(&c.notify)
-	runtime.RecordEvent(unsafe.Pointer(c), runtime.CondSignalEvent, 2)
+
 }
 
 // Broadcast wakes all goroutines waiting on c.
@@ -76,7 +75,7 @@ func (c *Cond) Signal() {
 func (c *Cond) Broadcast() {
 	c.checker.check()
 	runtime_notifyListNotifyAll(&c.notify)
-	runtime.RecordEvent(unsafe.Pointer(c), runtime.CondBroadcastEvent, 2)
+
 }
 
 // copyChecker holds back pointer to itself to detect object copying.

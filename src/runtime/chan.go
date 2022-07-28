@@ -712,9 +712,9 @@ func selectnbsend(c *hchan, elem unsafe.Pointer) (selected bool) {
 		selected = chansend(c, elem, false, getcallerpc())
 	}
 	if selected {
-		recordSelectEvent(c, SelectNbSendEvent, 0)
+		recordSelectEvent(c, SelectNbSendEvent, 0, 1)
 	} else {
-		recordSelectEvent(c, SelectDefaultEvent, -1)
+		recordSelectEvent(c, SelectDefaultEvent, -1, 1)
 	}
 	return
 }
@@ -743,9 +743,9 @@ func selectnbrecv(elem unsafe.Pointer, c *hchan) (selected, received bool) {
 		selected, received = chanrecv(c, elem, false)
 	}
 	if selected {
-		recordSelectEvent(c, SelectNbRecvEvent, 0)
+		recordSelectEvent(c, SelectNbRecvEvent, 0, 1)
 	} else {
-		recordSelectEvent(c, SelectDefaultEvent, -1)
+		recordSelectEvent(c, SelectDefaultEvent, -1, 1)
 	}
 	return
 }
@@ -757,11 +757,8 @@ func reflect_chansend(c *hchan, elem unsafe.Pointer, nb bool) (selected bool) {
 		waitSched(c)
 		selected = chansend(c, elem, !nb, getcallerpc())
 	}
-	if selected {
-		recordSelectEvent(c, ChanReflectSendEvent, 0)
-	} else {
-		recordSelectEvent(c, SelectDefaultEvent, -1)
-	}
+
+	recordChanEvent(c, ChanReflectSendEvent, 0)
 	return
 }
 
@@ -772,11 +769,8 @@ func reflect_chanrecv(c *hchan, nb bool, elem unsafe.Pointer) (selected bool, re
 		waitSched(c)
 		selected, received = chanrecv(c, elem, !nb)
 	}
-	if selected {
-		recordSelectEvent(c, ChanReflectRecvEvent, 0)
-	} else {
-		recordSelectEvent(c, SelectDefaultEvent, -1)
-	}
+
+	recordChanEvent(c, ChanReflectRecvEvent, 0)
 	return
 }
 

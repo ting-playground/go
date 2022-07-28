@@ -15,6 +15,8 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	cas1 := (*[1 << 16]scase)(unsafe.Pointer(cas0))
 	order1 := (*[1 << 17]uint16)(unsafe.Pointer(order0))
 
+	var wakeupType SyncEventType
+
 	ncases := nsends + nrecvs
 	scases := cas1[:ncases:ncases]
 	pollorder := order1[:ncases:ncases]
@@ -67,6 +69,18 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	}
 	pollorder = pollorder[:norder]
 	lockorder = lockorder[:norder]
+
+	// Set the priority of a select
+	thisg := getg()
+	if thisg.enableSelIdx {
+		want := thisg.curSelIdx % uint16(norder)
+		for i := range pollorder {
+			if pollorder[i] == want {
+				pollorder[i], pollorder[0] = pollorder[0], pollorder[i]
+				break
+			}
+		}
+	}
 
 	// sort the cases by Hchan address to get the locking order.
 	// simple heap sort, to guarantee n log n time and constant stack footprint.
@@ -169,7 +183,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	if !block {
 		selunlock(scases, lockorder)
 		casi = -1
-		recordSelectEvent(c, SelectDefaultEvent, int64(casi))
+		recordSelectEvent(c, SelectDefaultEvent, int64(casi), ncases)
 		goto retc
 	}
 
@@ -271,10 +285,13 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 		print("wait-return: cas0=", cas0, " c=", c, " cas=", cas, " send=", casi < nsends, "\n")
 	}
 
+	wakeupType = SelectRecvEvent
+
 	if casi < nsends {
 		if !caseSuccess {
 			goto sclose
 		}
+		wakeupType = SelectSendEvent
 	} else {
 		recvOK = caseSuccess
 	}
@@ -295,7 +312,7 @@ func selectgo(cas0 *scase, order0 *uint16, pc0 *uintptr, nsends, nrecvs int, blo
 	}
 
 	selunlock(scases, lockorder)
-	recordSelectEvent(c, SelectWakeUpEvent, int64(casi))
+	recordSelectEvent(c, wakeupType, int64(casi), ncases)
 	goto retc
 
 bufrecv:
@@ -321,7 +338,7 @@ bufrecv:
 	}
 	c.qcount--
 	selunlock(scases, lockorder)
-	recordSelectEvent(c, SelectBufRecvEvent, int64(casi))
+	recordSelectEvent(c, SelectBufRecvEvent, int64(casi), ncases)
 	goto retc
 
 bufsend:
@@ -340,7 +357,7 @@ bufsend:
 	}
 	c.qcount++
 	selunlock(scases, lockorder)
-	recordSelectEvent(c, SelectBufSendEvent, int64(casi))
+	recordSelectEvent(c, SelectBufSendEvent, int64(casi), ncases)
 	goto retc
 
 recv:
@@ -350,7 +367,7 @@ recv:
 		print("syncrecv: cas0=", cas0, " c=", c, "\n")
 	}
 	recvOK = true
-	recordSelectEvent(c, SelectRecvEvent, int64(casi))
+	recordSelectEvent(c, SelectRecvEvent, int64(casi), ncases)
 	goto retc
 
 rclose:
@@ -363,7 +380,7 @@ rclose:
 	if raceenabled {
 		raceacquire(c.raceaddr())
 	}
-	recordSelectEvent(c, SelectCloseRecvEvent, int64(casi))
+	recordSelectEvent(c, SelectCloseRecvEvent, int64(casi), ncases)
 	goto retc
 
 send:
@@ -378,7 +395,7 @@ send:
 	if debugSelect {
 		print("syncsend: cas0=", cas0, " c=", c, "\n")
 	}
-	recordSelectEvent(c, SelectSendEvent, int64(casi))
+	recordSelectEvent(c, SelectSendEvent, int64(casi), ncases)
 	goto retc
 
 retc:
@@ -391,4 +408,17 @@ sclose:
 	// send on closed channel
 	selunlock(scases, lockorder)
 	panic(plainError("send on closed channel"))
+}
+
+func SetCurrentSyncID(id int64) {
+	g := getg()
+	g.curSyncID = id
+	g.enableSelIdx = false
+}
+
+func SetCurrentSelect(id int64, index int) {
+	g := getg()
+	g.curSyncID = id
+	g.curSelIdx = uint16(index)
+	g.enableSelIdx = true
 }

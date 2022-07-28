@@ -358,7 +358,7 @@ func (c *cancelCtx) Value(key interface{}) interface{} {
 }
 
 func (c *cancelCtx) Done() <-chan struct{} {
-	defer runtime.RecordEvent(unsafe.Pointer(c), runtime.CtxDoneEvent, 2)
+	defer runtime.RecordEventInternal(unsafe.Pointer(c), runtime.CtxDoneEvent, 2)
 	d := c.done.Load()
 	if d != nil {
 		return d.(chan struct{})
@@ -402,7 +402,7 @@ func (c *cancelCtx) cancel(removeFromParent bool, err error) {
 		panic("context: internal error: missing cancel error")
 	}
 
-	defer runtime.RecordEvent(unsafe.Pointer(c), runtime.CtxCancelEvent, 3)
+	defer runtime.RecordEventInternal(unsafe.Pointer(c), runtime.CtxCancelEvent, 3)
 	c.mu.Lock()
 	if c.err != nil {
 		c.mu.Unlock()

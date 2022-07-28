@@ -497,6 +497,10 @@ type g struct {
 	gcAssistBytes int64
 
 	isNotUserSpaceG bool
+	curSyncID       int64  // current synchronization ID
+	curSelIdx       uint16 // current select index
+	enableSelIdx    bool
+	localEvents     []StTraceEvent
 }
 
 // gTrackingPeriod is the number of transitions out of _Grunning between
